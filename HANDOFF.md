@@ -5,14 +5,17 @@ every checkpoint. Keep it short; history lives in git and in ADRs.
 
 ## State
 
-- Branch / last commit: `main`, the initial commit `chore: scaffold ChuiTypes.jl from factory 0.2.1`.
+- Branch / last commit: `main`, `chore: sync factory 0.2.4 and refresh ecosystem copies`
+  (after the scaffold commit).
 - Phase and current task: **scaffolded; phase 1 (Research and ADRs) not started.** See
   `docs/agent/BRIEF.md` § Phases.
 - **ChuiCore is not released yet, so there is no upstream dependency.** `Project.toml` has no
   `[deps]`. `test/contracts/upstreams.toml` names ChuiCore without a URL, and `USED.md` lists no IDs.
-  The ChuiCore contract copy (`test/contracts/chui-core.md`, v0 DRAFT, coordinator commit 275e879)
-  is vendored for `scripts/contract_usage.jl`.
-- Factory 0.2.1, package profile (`.factory-version`).
+  The ChuiCore contract copy (`test/contracts/chui-core.md`, v0, binding since 2026-10-19,
+  coordinator commit 16b9e6a) is vendored for `scripts/contract_usage.jl`.
+- Factory 0.2.4, package profile (`.factory-version`). Changelog entries now go in
+  `changelog.d/` fragments; lane cap is 6 (`max_open`, checked by `scripts/check_claims.jl`).
+  `docs/agent/ECOSYSTEM.md` and `BRIEF.md` were refreshed from coordinator commit 16b9e6a.
 - ★-dependent defaults, pending the user's L0 decisions:
   - version `0.0.1` (ADR-0004 `0.0.x` snapshots);
   - `julia = "1.10"` (ADR-0006);

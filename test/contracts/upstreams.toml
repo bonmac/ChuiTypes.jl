@@ -12,5 +12,5 @@
 # scripts/contract_usage.jl resolves USED.md's IDs and the `names:` lines against it.
 # Example:  ChuiCore = "test/contracts/chui-core.md"
 [contract_files]
-# Copied from the coordinator at commit 275e879 on 2026-10-19 (contract v0, DRAFT).
+# Copied from the coordinator at commit 16b9e6a on 2026-10-19 (contract v0, binding since 2026-10-19).
 ChuiCore = "test/contracts/chui-core.md"

@@ -1,4 +1,4 @@
-<!-- package brief: coordinator commit 275e879, prompts/20-chui-types.md, copied 2026-10-19 -->
+<!-- package brief: coordinator commit 16b9e6a, prompts/20-chui-types.md, copied 2026-10-19 -->
 
 # Package brief: ChuiTypes.jl (data types, effects, streams)
 
@@ -38,7 +38,7 @@ Lanes for this package edit and commit only in `<root>/ChuiTypes.jl`.
 
 ## Independence
 
-- **Before ChuiCore's v0.1 release:** build against the ChuiCore contract by depending on the tagged pre-release (`v0.1.0-DEV`) from the personal registry.
+- **Before ChuiCore's v0.1 release:** build against the ChuiCore contract by depending on ChuiCore's registered `0.0.x` snapshots from the personal registry (ADR-0004 rule 2).
   - If there is no tag yet, implement the types and their own logic first, and put a thin adapter layer where ChuiCore's traits will plug in.
 - **Missing upstream features:** write a cross-repo request in `<root>/requests/` for the lead to schedule. A ChuiTypes lane never edits ChuiCore's code.
 
