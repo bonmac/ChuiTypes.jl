@@ -1,0 +1,7 @@
+name = "ChuiTypes"
+uuid = "c33459c2-7fd2-45be-ab80-42ad9256d649"
+version = "0.0.1"
+authors = ["Boniface Makone"]
+
+[compat]
+julia = "1.10"
