@@ -1,4 +1,4 @@
-<!-- upstream contract: coordinator commit 16b9e6a, contracts/chui-core.md, copied 2026-10-19 -->
+<!-- upstream contract: coordinator commit ff0100a, contracts/chui-core.md, copied 2026-10-19 -->
 
 # Contract: chui-core (v0)
 

@@ -1,4 +1,4 @@
-<!-- package brief: coordinator commit 16b9e6a, prompts/20-chui-types.md, copied 2026-10-19 -->
+<!-- package brief: coordinator commit ff0100a, prompts/20-chui-types.md, copied 2026-10-19 -->
 
 # Package brief: ChuiTypes.jl (data types, effects, streams)
 

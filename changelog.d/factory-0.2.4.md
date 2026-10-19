@@ -4,4 +4,7 @@
   gate scripts in `risk.toml`. The lane cap is now 6. The rendered `read-only-roots.txt` is
   gitignored.
 - Refreshed the coordinator copies `docs/agent/ECOSYSTEM.md`, `docs/agent/BRIEF.md` and
-  `test/contracts/chui-core.md` (contract v0, now binding) from coordinator commit 16b9e6a.
+  `test/contracts/chui-core.md` (contract v0, now binding) from coordinator commit ff0100a.
+- `test/runtests.jl` never runs `:contract` items, even under `-- all`: they run in
+  `test/contracts/`'s own environment via `julia scripts/ci.jl contracts` (matches ChuiCore.jl).
+- `test/jet/Project.toml` gains `[compat]` bounds `TOML = "1"` and `julia = "1.12"`.

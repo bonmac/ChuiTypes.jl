@@ -5,18 +5,24 @@ every checkpoint. Keep it short; history lives in git and in ADRs.
 
 ## State
 
-- Branch / last commit: `main`, `chore: sync factory 0.2.4 and refresh ecosystem copies`
-  (after the scaffold commit).
+- Branch / last commit: `main`, `fix: align runtests and jet compat with ChuiCore, re-pin
+  coordinator provenance` (after the factory 0.2.4 sync and the scaffold commit).
+- Remote: **none yet.** The public repo `bonmac/ChuiTypes.jl` is approved by the user and is
+  about to be created by the lead; nothing has been pushed.
 - Phase and current task: **scaffolded; phase 1 (Research and ADRs) not started.** See
   `docs/agent/BRIEF.md` § Phases.
 - **ChuiCore is not released yet, so there is no upstream dependency.** `Project.toml` has no
   `[deps]`. `test/contracts/upstreams.toml` names ChuiCore without a URL, and `USED.md` lists no IDs.
   The ChuiCore contract copy (`test/contracts/chui-core.md`, v0, binding since 2026-10-19,
-  coordinator commit 16b9e6a) is vendored for `scripts/contract_usage.jl`.
-- Factory 0.2.4, package profile (`.factory-version`). Changelog entries now go in
-  `changelog.d/` fragments; lane cap is 6 (`max_open`, checked by `scripts/check_claims.jl`).
-  `docs/agent/ECOSYSTEM.md` and `BRIEF.md` were refreshed from coordinator commit 16b9e6a.
-- ★-dependent defaults, pending the user's L0 decisions:
+  coordinator commit ff0100a) is vendored for `scripts/contract_usage.jl`.
+- Factory 0.2.4, package profile (`.factory-version`, source coordinator commit ff0100a).
+  Changelog entries go in `changelog.d/` fragments; lane cap is 6 (`max_open`, checked by
+  `scripts/check_claims.jl`). `docs/agent/ECOSYSTEM.md` and `BRIEF.md` match coordinator commit
+  ff0100a (the coordinator history was rewritten; the earlier provenance hash no longer exists).
+- `test/runtests.jl` matches ChuiCore.jl: `:contract` items never run there (not even under
+  `-- all`); they run in `test/contracts/` via `julia scripts/ci.jl contracts`.
+- L0 (★) was answered on 2026-10-19 (coordinator `HANDOFF.md`: all recommendations accepted),
+  so these defaults stand:
   - version `0.0.1` (ADR-0004 `0.0.x` snapshots);
   - `julia = "1.10"` (ADR-0006);
   - TestItemRunner, plus a Runic `format` job from the factory (ADR-0007);
@@ -63,19 +69,17 @@ Closure proof: no lanes were opened; the scaffold was written directly on `main`
 
 ## Blockers and decisions waiting
 
-- ★ L0 decisions: versioning `0.0.x` (ADR-0004), Julia floor (ADR-0006), formatter (ADR-0007),
-  license, benchmarks and coverage (ADR-0011).
-- Factory bugs reported to the lead (factory 0.2.1):
-  - `ratchet.jl` fails because of the managed `bash_guard.sh` size;
-  - `ci.jl docs`/`jet` write an absolute `[sources]` path into the committed `Project.toml`;
-  - the seeded `.gitignore` misses `/test/jet/Manifest*.toml`;
-  - the package profile seeds no `[check_docs] exclude` for the verbatim copies
-    (`docs/agent/*`, `test/contracts/*.md`). Fixed here by a user-authorized T3 edit of
-    `.agents/factory.toml`.
+- (Resolved at L0, 2026-10-19) versioning `0.0.x` (ADR-0004), Julia floor 1.10 (ADR-0006),
+  Runic (ADR-0007), MIT license, benchmarks and coverage (ADR-0011).
 - ChuiCore's first release: needed before any `[deps]` entry or contract test.
+- (Resolved) The factory 0.2.1 bugs reported to the lead were rechecked on factory 0.2.4
+  (2026-10-20): `scripts/ratchet.jl` → `OK` (`bash_guard.sh` is 86 lines, split into helpers);
+  `ci.jl jet` runs in a scratch copy and left `git status` clean; `.gitignore` has
+  `/test/jet/Manifest*.toml`; `.agents/factory.toml` keeps the `[check_docs] exclude` for the
+  verbatim copies (the earlier user-authorized T3 edit). `ci.jl docs` was not rerun here.
 
 ## Next action
 
-- After the ★ decisions: phase 1 of the brief. Write ADRs on the type-stable encoding, the
-  effect runtime (fibers or `Task`s, cancellation) and the stream design (push or pull,
-  backpressure), then report to the lead before implementing.
+- Phase 1 (Research and ADRs) per `docs/agent/BRIEF.md`, started by the lead at L1: write ADRs
+  on the type-stable encoding, the effect runtime (fibers or `Task`s, cancellation) and the
+  stream design (push or pull, backpressure), then report to the lead before implementing.

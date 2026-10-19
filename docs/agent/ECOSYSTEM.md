@@ -1,4 +1,4 @@
-<!-- ecosystem rules: coordinator commit 16b9e6a, prompts/common.md, copied 2026-10-19 -->
+<!-- ecosystem rules: coordinator commit ff0100a, prompts/common.md, copied 2026-10-19 -->
 
 # Chui ecosystem: shared rules for the lead and every agent
 
