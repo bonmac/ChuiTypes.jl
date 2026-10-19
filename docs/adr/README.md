@@ -7,3 +7,9 @@ about 60–120 lines, titled as a claim. Keep this index current in the same com
 | # | Title | Status |
 |---|---|---|
 | 0000 | [Template](0000-template.md) | — |
+| 0001 | [Data types are concrete parametric structs with one slot per variant payload](0001-data-types-are-concrete-parametric-structs.md) | Proposed |
+| 0002 | [The effect runtime interprets effects on Julia Tasks with cooperative cancellation](0002-effect-runtime-on-julia-tasks.md) | Proposed |
+| 0003 | [Streams are pull-based and chunked, with cancellable bounded queues at task boundaries](0003-streams-are-pull-based-and-chunked.md) | Proposed |
+| 0004 | [Every use of ChuiCore goes through one adapter module](0004-one-adapter-module-to-chuicore.md) | Proposed |
+| 0005 | [Runtime dependencies are ChuiCore and ScopedValues.jl only](0005-dependencies.md) | Proposed |
+| 0006 | [Adapters to Task, Channel and exceptions go through owned handles and cancellers](0006-adapters-to-task-channel-and-exceptions.md) | Proposed |
