@@ -6,14 +6,13 @@ every checkpoint. Keep it short; history lives in git and in ADRs.
 ## State
 
 - **Branch:** `feat/phase1-research`, cut from `main` at `db74452` (factory 0.2.5 sync). It is
-  **not merged**: this is the phase-1 ★ checkpoint.
+  **not merged**: it waits for the lead's review and merge.
 - **Remote:** none pushed from this lane.
-- **Phase:** **phase 1 (Research and ADRs) is done and waits at ★.** Per `docs/agent/BRIEF.md`
-  § Phases, phase 2 must not start until the user answers the questions below.
+- **Phase:** **phase 1 (Research and ADRs) is done; the ★ was answered on 2026-10-20** (below).
 - **What the branch adds** (spec: `docs/superpowers/specs/2026-10-20-phase1-research-design.md`):
   - three research notes in `docs/research/` (SUM-, EFF- and STR- entries, run on 1.13.2 and
     1.10.12);
-  - six Proposed ADRs in `docs/adr/` (0001–0006);
+  - six ADRs in `docs/adr/` (0001–0006), Accepted at the ★;
   - `changelog.d/phase1-research.md`.
 
   No code, `Project.toml` or contract changes.
@@ -31,7 +30,7 @@ every checkpoint. Keep it short; history lives in git and in ADRs.
 
 | Lane | Agent | File scope | Status | Report |
 |---|---|---|---|---|
-| `phase1-research` | types-p1 (lead-dispatched) | `docs/adr/**`, `docs/research/**`, `docs/superpowers/**`, `HANDOFF.md`, `changelog.d/phase1-research.md` | committed on branch, waiting at ★ | SendMessage to the lead, 2026-10-20 |
+| `phase1-research` | types-p1 (lead-dispatched) | `docs/adr/**`, `docs/research/**`, `docs/superpowers/**`, `HANDOFF.md`, `changelog.d/phase1-research.md` | ★ answered, ADRs accepted; waiting for the lead's merge | SendMessage to the lead, 2026-10-20 |
 
 Sub-agents of this lane, all closed after reporting: 3 researchers (sum types, effects, streams)
 and 2 critics, each running 3 rounds.
@@ -42,22 +41,22 @@ and 2 critics, each running 3 rounds.
 
 The experiment scripts are kept in `docs/research/scripts/`.
 
-## Decisions waiting (★, for the user via the lead)
+## Decisions (★ answered by the user, 2026-10-20; all recommendations accepted)
 
-1. **Accept ADRs 0001–0006** as the design for phases 2–4. Recommended: accept.
-2. **Contract conflicts C1/C2/C3** (spec, "Contract consistency"). Recommended: amend
-   `chui-types.md` obligation 2 through a contract ADR in the root repo, using the wording in
-   ADR-0006 "Consequences".
-3. **Names.** `Option`/`Either`, no `Maybe`/`Result` aliases; `Effect{E,A}` with no environment
-   type parameter; `run` as a `Base.run` method; `delay`/`clocktime`; `interrupt!` plus
-   `await`, since `interrupt` is Distributed's; whether to export the
-   `These` constructors `this`/`that`/`both`. Recommended: as proposed, with `this`/`that`/`both`
-   **not exported**, but marked `@compat public` and called as `ChuiTypes.both(a, b)`, because an
-   exported `both` blocks a later top-level `both = …` on 1.10/1.11 (E-24 behaviour).
-4. **Supposition on 1.10.** Use the `@check record=false` plus `@test` workaround until root
-   ADR-0007 §2 is amended. Recommended: yes.
-5. **ChuiCore requests R1–R5** (ADR-0004 §7). Recommended: the lead files them before ChuiCore's
-   first snapshot.
+1. **ADRs 0001–0006 accepted** as the design for phases 2–4.
+2. **Contract conflicts C1/C2/C3:** `chui-types.md` obligation 2 is amended through a contract
+   ADR in the coordinator, using ADR-0006 "Consequences" wording. The coordinator lane writes
+   it; applying the contract text needs the user's T3 approval. **Pending.**
+3. **Names accepted as proposed:** `Option`/`Either` with no aliases; `Effect{E,A}` with no
+   environment parameter; `run` as a `Base.run` method; `interrupt!` plus `await`;
+   `this`/`that`/`both` public (`@compat public`), not exported.
+4. **Supposition on 1.10:** decided for all packages; ecosystem ADR-0007 §2 is amended to require
+   `@check record=false` plus `@test`.
+5. **ChuiCore requests R1–R5** (ADR-0004 §7) go into the coordinator's `requests/`, written by
+   the coordinator lane. Registering R4 is an outward action and returns to the user. R1 is
+   partly settled by ChuiCore ADR-0001 (accepted, ChuiCore main `8082735`): `combine(m, a, b)` on
+   an instance value, fresh `neutral(m)`, constructor classes as Holy traits (`pure(tag, x)`);
+   the stand-ins must follow it.
 
 ## Checks NOT run, and why
 
@@ -67,4 +66,5 @@ The experiment scripts are kept in `docs/research/scripts/`.
 
 ## Next action
 
-After ★: phase 2 (core data types plus local law tests) per ADR-0001 and ADR-0004, in a new lane.
+Once the lead merges this branch: phase 2 ("Core data types, plus laws") per ADR-0001 and
+ADR-0004, in a new lane.

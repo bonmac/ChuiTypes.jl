@@ -2,7 +2,7 @@
 
 - **Date:** 2026-10-20
 - **Lane:** `phase1-research` (branch `feat/phase1-research`), tier T2 (public API shape, dependencies)
-- **Status:** awaiting the ★ checkpoint. Nothing is implemented in this phase.
+- **Status:** accepted (2026-10-20, user at the ChuiTypes phase-1 ★). Nothing is implemented in this phase.
 
 ## Goal
 

@@ -1,6 +1,6 @@
 # ADR-0005: Runtime dependencies are ChuiCore and ScopedValues.jl only
 
-- **Status:** Proposed
+- **Status:** Accepted (2026-10-20, user at the ChuiTypes phase-1 ★)
 - **Date:** 2026-10-20
 - **Deciders:** the user, at the phase-1 ★ checkpoint (via the lead)
 - **Scope:** ChuiTypes.jl

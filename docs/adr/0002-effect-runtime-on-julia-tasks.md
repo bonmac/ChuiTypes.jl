@@ -1,6 +1,6 @@
 # ADR-0002: The effect runtime interprets effects on Julia Tasks with cooperative cancellation
 
-- **Status:** Proposed
+- **Status:** Accepted (2026-10-20, user at the ChuiTypes phase-1 ★)
 - **Date:** 2026-10-20
 - **Deciders:** the user, at the phase-1 ★ checkpoint (via the lead)
 - **Scope:** ChuiTypes.jl

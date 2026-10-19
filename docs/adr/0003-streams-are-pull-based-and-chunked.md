@@ -1,6 +1,6 @@
 # ADR-0003: Streams are pull-based and chunked, with cancellable bounded queues at task boundaries
 
-- **Status:** Proposed
+- **Status:** Accepted (2026-10-20, user at the ChuiTypes phase-1 ★)
 - **Date:** 2026-10-20
 - **Deciders:** the user, at the phase-1 ★ checkpoint (via the lead)
 - **Scope:** ChuiTypes.jl

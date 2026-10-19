@@ -1,9 +1,11 @@
 # ADR-0006: Adapters to Task, Channel and exceptions go through owned handles and cancellers
 
-- **Status:** Proposed
+- **Status:** Accepted (2026-10-20, user at the ChuiTypes phase-1 ★). The `chui-types.md`
+  obligation-2 amendment (B1/B2, "Consequences" wording) is pending as a contract ADR in the
+  coordinator; applying it needs the user's T3 approval.
 - **Date:** 2026-10-20
-- **Deciders:** the user, at the phase-1 ★ checkpoint (via the lead); B1/B2 below need a contract
-  decision by the lead
+- **Deciders:** the user, at the phase-1 ★ checkpoint (via the lead); B1/B2 below go to the
+  coordinator as a contract ADR
 - **Scope:** ChuiTypes.jl
 
 ## Context

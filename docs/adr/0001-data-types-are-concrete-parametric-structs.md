@@ -1,6 +1,6 @@
 # ADR-0001: Data types are concrete parametric structs with one slot per variant payload
 
-- **Status:** Proposed
+- **Status:** Accepted (2026-10-20, user at the ChuiTypes phase-1 ★)
 - **Date:** 2026-10-20
 - **Deciders:** the user, at the phase-1 ★ checkpoint (via the lead)
 - **Scope:** ChuiTypes.jl
@@ -81,7 +81,8 @@ evidence files in `.lanes/evidence/`).
 6. **Validation** accumulates errors in a fresh `Vector{E}`. It never mutates an input's
    vector. A caller-supplied semigroup is used through ChuiCore's semigroup operation (stand-in
    `Upstream.<op>`, ADR-0004) as a method on `Validation`, never on `Vector` (no piracy). ChuiCore's
-   stable `combine(agg, a, b)` (CC-004) is the aggregation protocol, not this.
+   stable `combine(agg, a, b)` (CC-004) is the aggregation protocol, not this. Superseded in part:
+   per ChuiCore ADR-0001 the semigroup operation is that same `combine(m, a, b)` on an instance value.
 7. **`LazyList{T}`** is a memoised lazy cons for laziness (infinite lists). It is not a bulk path;
    bulk lazy data uses streams (ADR-0003). Forcing a cell is **not thread-safe** in v0.1, and this
    is documented.

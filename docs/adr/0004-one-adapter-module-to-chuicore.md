@@ -1,6 +1,6 @@
 # ADR-0004: Every use of ChuiCore goes through one adapter module
 
-- **Status:** Proposed
+- **Status:** Accepted (2026-10-20, user at the ChuiTypes phase-1 ★)
 - **Date:** 2026-10-20
 - **Deciders:** the user, at the phase-1 ★ checkpoint (via the lead)
 - **Scope:** ChuiTypes.jl
@@ -72,7 +72,8 @@
    item (root ADR-0010 rule 1). No placeholders.
 7. **Requests, not edits.** The lane drafts the requests; the lead files them. The known ones:
    - **(R1)** typeclass operation names and the trait encoding, including a semigroup operation
-     distinct from CC-004's three-argument `combine`;
+     distinct from CC-004's three-argument `combine`; superseded in part: the stand-ins must follow
+     ChuiCore ADR-0001 (`combine(m, a, b)` on an instance value, fresh `neutral(m)`, `pure(tag, x)`);
    - **(R2)** the law-kit form and its Supposition 1.10 workaround;
    - **(R3)** the transducer names and the guarantee of a type-stable fold over a chunk;
    - **(R4)** a first `0.0.x` snapshot;

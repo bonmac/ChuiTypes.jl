@@ -10,3 +10,4 @@
   - 0006 adapters to `Task`, `Channel` and exceptions, through owned handles and cancellers.
 
   Spec: `docs/superpowers/specs/2026-10-20-phase1-research-design.md`. No code changes.
+- ADRs 0001–0006 and the phase-1 spec accepted by the user at the phase-1 ★ (2026-10-20).
