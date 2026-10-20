@@ -1,7 +1,7 @@
 # ADR-0001: Data types are concrete parametric structs with one slot per variant payload
 
 - **Status:** Accepted (2026-10-20, user at the ChuiTypes phase-1 ★); amended 2026-10-20 (§4,
-  `LazyList` exception, user at the phase-2 ★)
+  `LazyList` exception: the user's answer to the phase-2 ★ decision 0, relayed by the lead)
 - **Date:** 2026-10-20
 - **Deciders:** the user, at the phase-1 ★ checkpoint (via the lead)
 - **Scope:** ChuiTypes.jl
@@ -76,7 +76,8 @@ evidence files in `.lanes/evidence/`).
      the other branch's, the two branches return different concrete types and a comprehension over
      them widens again (SUM-07). That is the documented price.
    - ExplicitImports gets an ignore entry for `Base.promote_op`.
-   - **Amendment (2026-10-20, user at phase-2 ★ decision 0, option (a)): `LazyList` is the
+   - **Amendment (2026-10-20; the user's answer to the phase-2 ★ decision 0, option (a), relayed
+     by the lead to the lane; the lead confirms it before merge): `LazyList` is the
      documented exception to "never correctness".** A lazily mapped `LazyList`
      (`map`/`chain`/`ap`) fixes its element type from `promote_op` at `map` time and stores
      values computed later, when cells are forced. If a method is added between `map` and

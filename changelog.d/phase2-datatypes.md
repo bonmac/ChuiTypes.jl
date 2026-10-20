@@ -16,6 +16,6 @@
 - Zero-allocation tests for `Option{Int}`, `Option{String}`, `Either{String,Int}` and
   `Validation{String,Int}` chains, `@inferred` chain tests, the CT-003 collision test, and a
   `benchmark/` suite. New dependency: Compat (`4.10`) for `@compat public`.
-- ADR-0001 §4 amended (user, phase-2 ★, 2026-10-20): `LazyList` is the documented exception to
+- ADR-0001 §4 amended (the user's phase-2 ★ answer, relayed by the lead, 2026-10-20): `LazyList` is the documented exception to
   "stale inference never costs correctness", because a lazily mapped list fixes its element
   type at `map` time.
