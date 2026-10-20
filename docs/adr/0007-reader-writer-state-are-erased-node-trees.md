@@ -33,12 +33,22 @@ Measurements (script `docs/research/scripts/encoding/rws_encodings.jl`; evidence
     stays concrete through the declared `S`; the result `a` is `Any`.
   - Depth 10^6, left- and right-nested, both layouts, both versions: final state `1000000`, no
     overflow.
-  - Run cost, 10^5 increments, best of 5: B1 23.1 / 22.4 ns per bind, B2 21.6 / 19.3 ns per bind
-    (1.13.2 / 1.10.12); 82–83 B allocated per increment (the closures and nodes the
-    continuations build). Building the chain costs about 3 ns per increment on 1.13.2.
-- **The effect trampoline** (candidate C). An interpreted effect step costs 25–70 ns (ADR-0002
-  §1, EFF-12) and every run goes through cancellation checks, a `ScopedValue` bridge and the
-  `Exit` machinery. Reader, Writer and State are pure; none needs a Task, a clock or cancellation.
+  - Run cost, 10^5 increments, best of 5: B1 18.7 / 20.2 ns per bind, B2 20.0 / 19.4 ns per bind
+    (1.13.2 / 1.10.12). The two layouts are within run-to-run noise (an earlier dirty-tree run
+    had B2 ahead on both versions). 82–83 B are allocated per increment, which is two binds, so
+    about 41 B per bind (the closures and nodes the continuations build). Building the chain
+    costs 3.3 / 2.6 ns per increment for B2 (results go to a global sink, so the loop is not
+    optimised away).
+- **Writer's cost is the monoid's.** The run threads one accumulator, `acc = combine(acc, w)` per
+  `tell`, in execution order. With an `Int` sum: 30–35 ns per tell. With a `Vector` log and `vcat`,
+  which copies the log on every tell: 429–1086 ns per tell at 10^3–10^4 tells, growing with the
+  log (quadratic in total). With an in-place `append!` into an accumulator the run owns: 27–32 ns
+  per tell (`rws-113`, `rws-110`).
+- **The effect trampoline** (candidate C). Reader, Writer and State are pure: none needs a Task, a
+  clock or cancellation. On C, every run would still go through the runtime's cancellation
+  checks, its `ScopedValue` bridge and its `Exit` machinery, and a pure `State` could not run
+  without the runtime. The speed gap is smaller: an interpreted effect step costs 25–70 ns
+  (ADR-0002 §1, EFF-12), 1.25–3.5× B's step.
 
 ## Decision
 
@@ -54,14 +64,27 @@ Measurements (script `docs/research/scripts/encoding/rws_encodings.jl`; evidence
    internal interpreter over the three node sets is allowed). The loop must not recurse on bind
    depth, so left- and right-nested chains of 10^6 binds run on both versions (tested at 10^5 in
    the unit suite, 10^6 in a `:slow` item).
-3. **The run functions keep the declared parameter concrete:** the state slot is typed `S` (a
-   `put` of a non-`S` value is converted with `convert(S, x)`, or throws), the environment is an
-   `R`, and the log accumulator is a `W`, combined with the caller's monoid instance through
-   `Upstream.combine` (ADR-0004 §2; no default monoid).
+3. **The parameter is fixed where a value is built, and the run keeps it concrete.**
+   - Primitives that need the parameter take it: `getstate(S)`, `putstate(S, x)` (which stores
+     `convert(S, x)` when the value is built, so a bad `x` throws there), `modifystate(f, S)`,
+     `ask(R)`, `asks(f, R)`. `putstate(x)` and `tell(w)` use `typeof(x)` and `typeof(w)`.
+   - The run's state slot is an `S`, its environment an `R` and its log accumulator a `W`.
+   - **Writer** starts from `neutral(mon)` once per run (a fresh value the run owns) and threads
+     `acc = combine(mon, acc, w)` (`Upstream.combine`, ADR-0004 §2; no default monoid) in
+     execution order. Left- and right-nested chains therefore give the same log, and the Monad
+     laws rest on associativity. A monoid that combines into its first argument in place costs
+     linear time; a copying one costs quadratic time, and the docstring says so.
+   - **Scoped operations are frames, not nested runs.** Reader's `local` (`withreader(f, m)`) and
+     Writer's `listen`/`censor` (`listening(m)`, `censor(f, m)`) push a restore frame onto the
+     same explicit stack, so nesting them 10^5 deep is stack-safe (tested). The names avoid the
+     keyword `local`, `Base.get` and `Sockets.listen`.
 4. **Instances:** Functor, Applicative and Monad for all three, through the `Upstream`
-   stand-ins (`fmap`, `pure(tag, x)`, `ap`, `chain`) and `Base.map`. Tags carry the declared
-   parameter (`ReaderTag{R}`, `WriterTag{W}`, `StateTag{S}`). Binding a `State{S}` continuation
-   that returns a `State{S2}` with `S2 !== S` throws an `ArgumentError` at run time.
+   stand-ins (`fmap`, `pure(tag, x)`, `ap`, `chain`) and `Base.map`; the public bind is
+   `andthen(k, m)`. Tags carry the declared parameter (`ReaderTag{R}`, `WriterTag{W}`,
+   `StateTag{S}`). If a continuation of a `State{S}` returns anything but a `State{S}` (for
+   example `putstate(0x01)`, a `State{UInt8}`, inside a `State{Int}`), the run throws an
+   `ArgumentError` naming both types. The same holds for Reader and Writer. Values are immutable
+   and can be shared across threads; each run owns its stack.
 5. **Equality is extensional and is not defined on the values.** `==`/`isequal`/`hash` fall back
    to identity; law tests compare by running both sides on sample inputs (environments, initial
    states, monoids), per ADR-0001 §8.
@@ -76,8 +99,8 @@ Measurements (script `docs/research/scripts/encoding/rws_encodings.jl`; evidence
 | Closure struct `State{F}` (A) | Compiles one type per bind: a loop-built chain of 10^4 binds did not finish in 610 s (`rwsdeep-113`); inference depends on the closure shape (SUM-12 vs `rws-113`). |
 | `A` as a type parameter from `promote_op` | ADR-0001 §8 and `polate-*`: stale inference throws on correct programs. |
 | `A` as a parameter the user declares on every constructor | Every `pure`/`map`/`chain` would need an extra type argument; the `run(m, s, T)` assertion gives the same guarantee at one place. |
-| Build them on `Effect` (C) | 25–70 ns per step plus Task, cancellation and `Exit` overhead for pure code; a pure `State` would need the runtime to run. |
-| Abstract node types (B1) | Measured slightly slower than the tagged node (B2) on both versions; either is acceptable, B2 is chosen for the speed. |
+| Build them on `Effect` (C) | A pure `State` would need the runtime (Tasks, cancellation, `Exit`) to run; also 1.25–3.5× B's step cost. |
+| Abstract node types (B1) | Same speed as B2 within noise. B2 is chosen because one concrete node field avoids a dynamic type check of the node on every step. |
 | Value equality on the structs | Two programs are equal only extensionally; comparing node trees would make `map(identity, m) != m`. |
 
 ## Consequences
@@ -85,7 +108,7 @@ Measurements (script `docs/research/scripts/encoding/rws_encodings.jl`; evidence
 - New exported names (proposed at the phase-3 ★, checked by CT-003): `Reader`, `Writer`, `State`,
   their constructors and run functions (spec `docs/superpowers/specs/2026-10-20-phase3-effects-design.md` §2).
 - Results are `Any`-typed unless asserted. Code that needs a concrete result passes `T`.
-- About 20 ns and 80 B per bind: fine for configuration, logging and parser-like code; a hot
+- About 20 ns and 41 B per bind: fine for configuration, logging and parser-like code; a hot
   numeric loop should not be written as a `State` chain.
 - Law kits compare with an `eq` that runs both sides (`test/laws/`).
 
