@@ -5,66 +5,51 @@ every checkpoint. Keep it short; history lives in git and in ADRs.
 
 ## State
 
-- **Branch:** `feat/phase1-research`, cut from `main` at `db74452` (factory 0.2.5 sync). It is
-  **not merged**: it waits for the lead's review and merge.
+- **Branch:** `feat/phase2-datatypes`, cut from `main` at `455c085` (phase 1 accepted and
+  merged). It is **not merged**: it waits for the lead's review and merge.
 - **Remote:** none pushed from this lane.
-- **Phase:** **phase 1 (Research and ADRs) is done; the ★ was answered on 2026-10-20** (below).
-- **What the branch adds** (spec: `docs/superpowers/specs/2026-10-20-phase1-research-design.md`):
-  - three research notes in `docs/research/` (SUM-, EFF- and STR- entries, run on 1.13.2 and
-    1.10.12);
-  - six ADRs in `docs/adr/` (0001–0006), Accepted at the ★;
-  - `changelog.d/phase1-research.md`.
-
-  No code, `Project.toml` or contract changes.
-- **ChuiCore is still unreleased.** `Project.toml` has no `[deps]`. ADR-0004 puts every ChuiCore
-  use behind `ChuiTypes.Upstream`, and ADR-0005 adds ChuiCore at its first `0.0.x` snapshot.
-- **Unchanged since the scaffold:**
-  - the L0 defaults: `0.0.1`, `julia = "1.10"`, TestItemRunner plus Runic, MIT;
-  - the lane cap of 6;
-  - `:contract` items run only in `test/contracts/`.
-- **Evidence files** are in `.lanes/evidence/` (gitignored), keyed to `db74452`: `sum-*`,
-  `opt2*`, `effenc-*`, `eff-bench-*`, `streams-tp-*`, `names-*`, `ctor-names-*`,
-  `runtime-names-*`.
+- **Phase:** **phase 2 (core data types, plus laws) is implemented** on the branch.
+  - Spec: `docs/superpowers/specs/2026-10-20-phase2-datatypes-design.md` (decisions the ADRs
+    leave open). Plan: `docs/superpowers/plans/2026-10-20-phase2-datatypes.md`.
+  - Types (ADR-0001): `Option`, `Either`, `Validation`, `These`, `NonEmpty`, `LazyList`, one
+    file each in `src/`.
+  - `src/upstream.jl`: the `ChuiTypes.Upstream` stand-ins (ADR-0004), mirroring ChuiCore
+    ADR-0001 (`combine(m, a, b)`, fresh `neutral(m)`, `pure(tag, x)`). Not exported, not public.
+  - Law kits in `test/laws/kits.jl` (`@check record=false db=false` plus `@test`), law tests for
+    every ADR-0001 §10 instance, one planted violation per law (runs on 1.10).
+  - `benchmark/`: a `SUITE` for the four zero-allocation chains of ADR-0001 §11.
+- **Dependencies:** `Compat = "4.10"` (for `@compat public`, ADR-0005 §1). ChuiCore is still
+  unreleased and is not a dependency. Test-only: Supposition `0.3`, plus the stdlibs the CT-003
+  test loads.
+- **Unchanged:** the L0 defaults (`0.0.1`, `julia = "1.10"`, TestItemRunner plus Runic, MIT);
+  the lane cap of 6; `:contract` items run only in `test/contracts/`; `USED.md` lists no ChuiCore
+  IDs (nothing from ChuiCore is used yet).
+- **Evidence files:** `.lanes/evidence/` (gitignored), keyed to the lane's commits; the lead's
+  report lists the commands and counts.
 
 ## Open lanes
 
 | Lane | Agent | File scope | Status | Report |
 |---|---|---|---|---|
-| `phase1-research` | types-p1 (lead-dispatched) | `docs/adr/**`, `docs/research/**`, `docs/superpowers/**`, `HANDOFF.md`, `changelog.d/phase1-research.md` | ★ answered, ADRs accepted; waiting for the lead's merge | SendMessage to the lead, 2026-10-20 |
+| `phase2-datatypes` | types-p2 (lead-dispatched) | `src/**`, `ext/**`, `test/**`, `Project.toml`, `docs/**`, `benchmark/**`, `HANDOFF.md`, `changelog.d/phase2-datatypes.md` | implemented; reviewer pass pending | SendMessage to the lead, 2026-10-20 |
 
-Sub-agents of this lane, all closed after reporting: 3 researchers (sum types, effects, streams)
-and 2 critics, each running 3 rounds.
-- The critic on ADR-0002/0003/0006 and the spec started at 4 blockers and 14 should-fix, then
-  1 blocker and 4 should-fix, then **0/0, accept**.
-- The critic on ADR-0001/0004/0005 started at 2 blockers and 9 should-fix, then 0 blockers and
-  2 should-fix, then **0/0, accept**.
+## Decisions waiting (for the lead)
 
-The experiment scripts are kept in `docs/research/scripts/`.
-
-## Decisions (★ answered by the user, 2026-10-20; all recommendations accepted)
-
-1. **ADRs 0001–0006 accepted** as the design for phases 2–4.
-2. **Contract conflicts C1/C2/C3:** `chui-types.md` obligation 2 is amended through a contract
-   ADR in the coordinator, using ADR-0006 "Consequences" wording. The coordinator lane writes
-   it; applying the contract text needs the user's T3 approval. **Pending.**
-3. **Names accepted as proposed:** `Option`/`Either` with no aliases; `Effect{E,A}` with no
-   environment parameter; `run` as a `Base.run` method; `interrupt!` plus `await`;
-   `this`/`that`/`both` public (`@compat public`), not exported.
-4. **Supposition on 1.10:** decided for all packages; ecosystem ADR-0007 §2 is amended to require
-   `@check record=false` plus `@test`.
-5. **ChuiCore requests R1–R5** (ADR-0004 §7) go into the coordinator's `requests/`, written by
-   the coordinator lane. Registering R4 is an outward action and returns to the user. R1 is
-   partly settled by ChuiCore ADR-0001 (accepted, ChuiCore main `8082735`): `combine(m, a, b)` on
-   an instance value, fresh `neutral(m)`, constructor classes as Holy traits (`pure(tag, x)`);
-   the stand-ins must follow it.
+1. **`docs/CHECK_COVERAGE.md` row for the ChuiCore grep test** (ADR-0004 §1). The file is
+   generated from `.agents/checks.local.toml`, outside this lane's scope. Blind spots to list:
+   names built at run time (`getfield(Main, Symbol(...))`, `eval`), modules reached through
+   `Base.loaded_modules`.
+2. **Requests R1–R5** (ADR-0004 §7) are still to be filed by the coordinator. R1 now has
+   concrete proposals: `chain` (bind), `ap`, `alt`, `zeroalt(tag, T)`, `bimap`, tags that carry
+   the fixed parameters (`EitherTag{L}()`), and `default_monoid` for `These`.
 
 ## Checks NOT run, and why
 
-- `ci.jl test`/`quality`/`jet`: this phase adds no code (docs only).
-- Julia 1.14 (alpha) and 1.12: no runnable binaries locally. EFF-02 is source-only.
+- Julia 1.14 (alpha) and 1.12: no runnable binaries locally.
+- `ci.jl contracts`: skips (waiting): `test/contracts/upstreams.toml` has no ChuiCore URL.
 - GitHub workflows: no remote from this lane.
 
 ## Next action
 
-Once the lead merges this branch: phase 2 ("Core data types, plus laws") per ADR-0001 and
-ADR-0004, in a new lane.
+Once the lead merges this branch: phase 3 (Reader/Writer/State encoding ADR, the effect runtime,
+`sync(f)`), in a new lane. At ChuiCore's first snapshot: the switch-over of ADR-0004 §3.
