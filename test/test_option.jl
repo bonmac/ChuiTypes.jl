@@ -97,12 +97,16 @@ end
     chainS(o) = U.chain(y -> some(y * "?"), map(identity, o))
     @test @inferred(chainS(some("a"))) == some("a?")
     if Base.JLOptions().code_coverage == 0
+        # measured inside a function: a test item's top-level thunk allocates on 1.10
+        allocs(f, x) = (f(x); @allocated f(x))
         run_int(o) = foldl(+, chain3(o); init = 0)
-        run_int(some(8))
-        @test (@allocated run_int(some(8))) == 0
-        lenS(o) = foldl((a, x) -> a + ncodeunits(x), map(identity, o); init = 0)
-        str = some("abc")
-        lenS(str)
-        @test (@allocated lenS(str)) == 0
+        @test allocs(run_int, some(8)) == 0
+        @test allocs(run_int, some(3)) == 0
+        @test allocs(run_int, none(Int)) == 0
+        # a String chain whose functions build no new strings (`*` would allocate by itself)
+        nonblank(y) = isempty(y) ? none(String) : some(y)
+        lenS(o) = foldl((a, x) -> a + ncodeunits(x), U.chain(nonblank, map(identity, U.chain(nonblank, o))); init = 0)
+        @test allocs(lenS, some("abc")) == 0
+        @test allocs(lenS, none(String)) == 0
     end
 end

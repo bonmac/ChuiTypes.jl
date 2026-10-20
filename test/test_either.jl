@@ -66,10 +66,10 @@ end
     @test @inferred(chain3(left("x", Int))) == left("x", Int)
     @test @inferred(U.bimap(length, x -> x + 1, right(String, 1))) == right(Int, 2)
     if Base.JLOptions().code_coverage == 0
+        allocs(f, x) = (f(x); @allocated f(x))       # inside a function (see test_option.jl)
         run(e) = foldl(+, chain3(e); init = 0)
-        r, l = right(String, 3), left("x", Int)
-        run(r); run(l)
-        @test (@allocated run(r)) == 0
-        @test (@allocated run(l)) == 0
+        @test allocs(run, right(String, 3)) == 0
+        @test allocs(run, right(String, -3)) == 0
+        @test allocs(run, left("x", Int)) == 0
     end
 end

@@ -65,9 +65,8 @@ end
     @test @inferred(chain3(valid(3, String))) === valid(6, String)
     @test @inferred(chain3(invalid("e", Int))) == invalid("e", Int)
     if Base.JLOptions().code_coverage == 0
+        allocs(f, x) = (f(x); @allocated f(x))       # inside a function (see test_option.jl)
         run(v) = foldl(+, chain3(v); init = 0)
-        v = valid(3, String)
-        run(v)
-        @test (@allocated run(v)) == 0
+        @test allocs(run, valid(3, String)) == 0
     end
 end
