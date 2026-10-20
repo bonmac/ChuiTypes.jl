@@ -33,7 +33,11 @@ every checkpoint. Keep it short; history lives in git and in ADRs.
 
 | Lane | Agent | File scope | Status | Report |
 |---|---|---|---|---|
-| `phase3-effects` | types-p3 (lead-dispatched) | `src/**`, `ext/**`, `test/**`, `Project.toml`, `docs/**`, `benchmark/**`, `HANDOFF.md`, `changelog.d/phase3-effects.md`, `.gitignore` | implemented; reviewer loop in progress; waiting for the lead's merge | SendMessage to the lead, 2026-10-20 |
+| `phase3-effects` | types-p3 (lead-dispatched) | `src/**`, `ext/**`, `test/**`, `Project.toml`, `docs/**`, `benchmark/**`, `HANDOFF.md`, `changelog.d/phase3-effects.md`, `.gitignore` | implemented; reviewer FINAL ACCEPT at `37ec1ad`; waiting for the lead's merge | SendMessage to the lead, 2026-10-20 |
+
+Follow-ups the reviewer left as NITs (not fixed on this branch): `_race`/`_zippar` should `_stop!`
+their children in a `try/finally`, so a ^C escaping a masked wait cannot strand them (N-a); the
+stress test's test-mode section runs `runtest` in a non-sticky task, and should use a sticky one (N-b).
 
 ## Decisions waiting (for the lead / the user at the phase-3 ★)
 
@@ -44,7 +48,13 @@ every checkpoint. Keep it short; history lives in git and in ADRs.
    `local` keyword); `getstate`/`putstate` (avoid `Base.get`).
 3. **Semantics to confirm:** a child failure fails its scope even when the parent awaited the
    child (Kotlin semantics; `race`/`timeout`/`zippar` use unsupervised children). `timeout`'s
-   `none(A)` uses the advisory `A`.
+   `none(A)` uses the advisory `A`. Inside a masked region, the hidden children of
+   `race`/`timeout`/`zippar`/`fromtask(f)` are detached from the fiber's cancellation (so they
+   work in releases); a user `fork` there is still cancelled with its scope.
+   **Test mode and foreign tasks:** virtual time is frozen while a `fromtask(t::Task)` runs, so
+   `timeout(fromtask(t), d)` never expires on a slow `t` under `runtest`; `advance!`/`runtest`
+   throw after the wall-clock timeout instead, and an abandoned `t` keeps test mode busy (this
+   changes how ADR-0013's orphan rule looks under `runtest`).
 4. Carried over: the `docs/CHECK_COVERAGE.md` row for the ChuiCore grep test, and requests R1–R5
    (ADR-0004 §7), still with the coordinator.
 
