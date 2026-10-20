@@ -26,7 +26,8 @@ computed until a cell is forced (by iteration), and each cell is forced once.
   race (ADR-0001 §7).
 - `map`/`chain`/`ap` fix the result element type from `Base.promote_op` when they are called
   (ADR-0001 §4). A method defined between that call and forcing, which changes the function's
-  return type, can make forcing throw a conversion error.
+  return type, can make forcing throw a conversion error (the documented exception of the
+  ADR-0001 §4 amendment, 2026-10-20).
 - `length`, `==`, `isequal`, `hash` and `foldl` force the whole list (they do not return on an
   infinite list). `Base.IteratorSize` is `SizeUnknown`, so `Iterators.take` works on infinite
   lists.

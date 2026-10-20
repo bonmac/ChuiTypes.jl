@@ -31,16 +31,19 @@ every checkpoint. Keep it short; history lives in git and in ADRs.
 
 | Lane | Agent | File scope | Status | Report |
 |---|---|---|---|---|
-| `phase2-datatypes` | types-p2 (lead-dispatched) | `src/**`, `ext/**`, `test/**`, `Project.toml`, `docs/**`, `benchmark/**`, `HANDOFF.md`, `changelog.d/phase2-datatypes.md` | implemented; reviewer pass pending | SendMessage to the lead, 2026-10-20 |
+| `phase2-datatypes` | types-p2 (lead-dispatched) | `src/**`, `ext/**`, `test/**`, `Project.toml`, `docs/**`, `benchmark/**`, `HANDOFF.md`, `changelog.d/phase2-datatypes.md` | implemented, reviewed; ★ decision 0 answered (ADR-0001 §4 amended); waiting for the lead's merge | SendMessage to the lead, 2026-10-20 |
 
 ## Decisions waiting (for the lead)
 
-0. **★ `LazyList` and ADR-0001 §4** (reviewer SHOULD-FIX-1). A lazily mapped list fixes its
-   element type from `promote_op` at `map` time and stores values computed later, so a method
-   added before forcing can make forcing throw. ADR-0001 §4 says stale inference never costs
-   correctness. Options: (a) amend ADR-0001 to name `LazyList` as the documented exception
-   (recommended; spec §6), or (b) element type `Any` for lazily mapped lists (loses type
-   stability). The code implements (a)'s behaviour and documents it; it waits for the user.
+- **Answered: ★ decision 0, `LazyList` and ADR-0001 §4.** On 2026-10-20 the user chose option
+  (a): ADR-0001 §4 carries a dated amendment naming `LazyList` as the documented exception (a
+  lazily mapped list fixes its element type at `map` time, so a method added before forcing can
+  make forcing throw).
+- **Lead's: stale `origin/main`.** `scripts/_common.jl` `merge_base` prefers `origin/main`
+  (`db74452`), so `scripts/lane audit` fails on `changelog.d/phase1-research.md` and `dod.jl
+  --base main` counts 84 files; `dod.jl --base 455c085` gives the true diff. The lead fixes it
+  with the next push.
+
 1. **`docs/CHECK_COVERAGE.md` row for the ChuiCore grep test** (ADR-0004 §1). The file is
    generated from `.agents/checks.local.toml`, outside this lane's scope. Blind spots to list:
    names built at run time (`getfield(Main, Symbol(...))`, `eval`), modules reached through

@@ -71,7 +71,8 @@ one; the head is converted to `T` when the list is built) and `lazylist(itr)` (l
 iterator, consumed once). Cells are memoised and forcing is not thread-safe (ADR-0001 §7). A cell
 that forces itself throws an `ArgumentError`; a thunk that throws leaves its cell unforced.
 
-**Deviation from ADR-0001 §4, needs a ★ decision.** `map`/`chain`/`ap` fix the result element
+**Exception to ADR-0001 §4, decided: the user chose option (a) at the phase-2 ★ (2026-10-20),
+and ADR-0001 §4 now carries the amendment.** `map`/`chain`/`ap` fix the result element
 type from `promote_op` when they are called, and later store computed values in cells of that
 type. A method added between `map` and forcing that changes `f`'s return type therefore makes
 forcing throw (`g(x) = 1; l = map(g, lazylist(1:3)); @eval g(x) = 1.5; collect(l)` gives an
