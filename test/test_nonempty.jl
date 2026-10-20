@@ -68,6 +68,9 @@ end
     @test first(get(tr, nothing)) isa Int
     @test_throws ArgumentError ne[true]                      # Bool is not an index (review NIT-4)
     # traverse is linear: a long tail completes and keeps order
-    long = nonempty(0, 1:20_000...)
+    # built without a huge splat; the constructor itself is checked at 3 000 arguments below
+    long = U.chain(x -> nonempty(100x, (100x + 1):(100x + 99)...), nonempty(0, 1:199...))
+    @test length(long) == 20_000 && collect(long) == 0:19_999
+    @test length(nonempty(0, 1:3_000...)) == 3_001          # stack overflow on 1.10 before
     @test get(U.traverse(ChuiTypes.OptionTag(), some, long), nothing) == long
 end

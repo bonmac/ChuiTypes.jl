@@ -25,7 +25,9 @@ The `NonEmpty` holding `x` followed by `xs`. The element type is the promoted ty
 arguments, as for the array literal `[x, xs...]`.
 """
 function nonempty(x, xs...)
-    T = promote_type(typeof(x), map(typeof, xs)...)
+    # a loop, not `promote_type(types...)`: that recursion overflows the stack on 1.10 for a
+    # few thousand arguments (review BLOCKER-3)
+    T = mapfoldl(typeof, promote_type, xs; init = typeof(x))
     return NonEmpty{T}(_NEW, x, T[xs...])
 end
 
