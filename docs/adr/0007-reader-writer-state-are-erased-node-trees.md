@@ -14,17 +14,23 @@ three candidates: closure-specialised structs (SUM-12), an erased callable with 
 user declares, and the effect trampoline (ADR-0002 §1).
 
 Measurements (script `docs/research/scripts/encoding/rws_encodings.jl`; evidence `rws-113`,
-`rws-110`, `rwsdeep-113` in `.lanes/evidence/`). The workload is a counter: `get`, then
+`rws-110`, `rwsdeep-110`, `rwsdeep-113`, all at `f87a3fa`, in `.lanes/evidence/`). The workload is a counter: `get`, then
 `put(s + 1)`, repeated; "left" nests binds as `bind(bind(bind(m, k), k), k)`, "right" as
 `bind(m, x -> bind(…))`.
 
 - **Closure struct `CState{F}`** (candidate A). Here `return_types` stays concrete to depth 4 for
   `x -> cpure(x + 1)` chains on both versions, unlike SUM-12's shape (which lost inference at depth
   3); inference depends on the closure shape. Each bind nests the closure *type*, so a chain built
-  in a loop compiles one new type per bind. Left-nested depth 1000 ran (`rwsdeep-113`: `1000`);
-  depth 10^4 had not finished after 610 s and was killed (signal 15) while still compiling. A
-  chain built from data (a loop, a `foldl` over a vector) is the normal case for Writer and
-  State, so A is unusable there, whatever its inference.
+  in a loop compiles one new type per bind. On 1.10.12 (`rwsdeep-110`, build and first run timed
+  separately) building is cheap (0.38 s at depth 10^4) but the first run, which compiles the
+  nested types, takes 0.16 s at depth 100, 8.71 s at 1000, 35.65 s at 2000, 137.45 s at 4000 and
+  941.69 s at 10^4, printing "Internal error: stack overflow in type inference" 12 times from
+  depth 4000 on. On 1.13.2 (`rwsdeep-113`) the first runs took 0.12 s, 9.11 s, 37.92 s and
+  299.16 s at depths 100 to 4000; the depth-10^4 run had not finished when it was killed (signal
+  15) after 2061 s in total. Its header says `exit: 0` because `scripts/evidence.jl` records the
+  exit code but not the signal (a draft request in the phase-3 report). A chain built from data (a loop, a
+  `foldl` over a vector) is the normal case for Writer and State, so A is unusable there,
+  whatever its inference.
 - **Erased node tree with a declared state type** (candidate B: the "erased callable" candidate,
   made a data tree so that it can be trampolined). `EState{S}` wraps an internal node; a run loop
   keeps an explicit continuation stack. Two node layouts were measured: abstract node structs
@@ -56,7 +62,10 @@ Measurements (script `docs/research/scripts/encoding/rws_encodings.jl`; evidence
    which the user declares**, never one derived from inference:
    - `R` is the environment type, `W` the log type, `S` the state type.
    - Each wraps one internal, erased node (B2's layout: one concrete node struct with a tag and
-     untyped payload fields). The nodes are not public.
+     untyped payload fields). The nodes are not public. The node is a `mutable struct` whose
+     fields are all `const`: never mutated, but compared and hashed by identity, because `===`
+     and `hash` on an immutable node recurse through the tree and overflow the stack on two
+     separately built 10^6-node programs (found by the implementing sub-lane, both versions).
    - The success type `A` is **not a parameter**. Results come back as `Any` unless the caller
      asserts a type it declares: `runstate(m, s0, T)`, `runreader(m, r, T)`,
      `runwriter(m, mon, T)` assert `a::T` (ADR-0002 §1's `run(eff, T)` rule).
@@ -96,7 +105,7 @@ Measurements (script `docs/research/scripts/encoding/rws_encodings.jl`; evidence
 
 | Alternative | Why rejected |
 |---|---|
-| Closure struct `State{F}` (A) | Compiles one type per bind: a loop-built chain of 10^4 binds did not finish in 610 s (`rwsdeep-113`); inference depends on the closure shape (SUM-12 vs `rws-113`). |
+| Closure struct `State{F}` (A) | Compiles one type per bind: the first run of a loop-built chain of 10^4 binds took 941.69 s on 1.10.12 (`rwsdeep-110`) and had not finished after more than 1700 s on 1.13.2 (`rwsdeep-113`); inference depends on the closure shape (SUM-12 vs `rws-113`). |
 | `A` as a type parameter from `promote_op` | ADR-0001 §8 and `polate-*`: stale inference throws on correct programs. |
 | `A` as a parameter the user declares on every constructor | Every `pure`/`map`/`chain` would need an extra type argument; the `run(m, s, T)` assertion gives the same guarantee at one place. |
 | Build them on `Effect` (C) | A pure `State` would need the runtime (Tasks, cancellation, `Exit`) to run; also 1.25–3.5× B's step cost. |
@@ -114,12 +123,12 @@ Measurements (script `docs/research/scripts/encoding/rws_encodings.jl`; evidence
 
 ## Verification
 
-- Evidence `rws-113`, `rws-110`, `rwsdeep-113` (`.lanes/evidence/`, produced by
-  `scripts/evidence.jl` on 1.13.2 and 1.10.12), script in `docs/research/scripts/encoding/`.
+- Evidence `rws-113`, `rws-110`, `rwsdeep-110`, `rwsdeep-113` (clean tree at `f87a3fa`), in
+  `.lanes/evidence/`, produced by `scripts/evidence.jl` on 1.13.2 and 1.10.12; script in `docs/research/scripts/encoding/`
+  (Runic-formatted after the runs, formatting only). Evidence files are gitignored and local.
 - SUM-12 (`docs/research/sum-types.md`).
-- UNVERIFIED: the closure depth-10^4 run on 1.10.12 (not repeated after 1.13.2 took over 600 s);
-  Reader and Writer were not measured separately (they share State's shape); benchmarks on an
-  idle machine.
+- UNVERIFIED: Reader was not measured separately (it shares State's shape); benchmarks on an
+  idle machine (other lanes' Julia processes ran during every measurement).
 
 ## Revisit when
 

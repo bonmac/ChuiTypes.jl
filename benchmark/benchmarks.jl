@@ -22,3 +22,25 @@ SUITE["chains"]["Option{Int}"] = @benchmarkable opt_int($XS)
 SUITE["chains"]["Option{String}"] = @benchmarkable opt_str($SS)
 SUITE["chains"]["Either{String,Int}"] = @benchmarkable either_chain($XS)
 SUITE["chains"]["Validation{String,Int}"] = @benchmarkable val_chain($XS)
+
+# Phase 3: the interpreted step costs of ADR-0002 §1 (effect) and ADR-0007 (State), per 10^4 binds.
+function eff_chain(n)
+    m = succeed(0)
+    for _ in 1:n
+        m = andthen(x -> succeed(x + 1), m)
+    end
+    return m
+end
+function state_chain(n)
+    m = U.pure(ChuiTypes.StateTag{Int}(), 0)
+    for _ in 1:n
+        m = andthen(_ -> modifystate(s -> s + 1, Int), m)
+    end
+    return m
+end
+const EFF = eff_chain(10_000)
+const ST = state_chain(10_000)
+SUITE["interpreters"] = BenchmarkGroup()
+SUITE["interpreters"]["Effect 10^4 binds"] = @benchmarkable run($EFF)
+SUITE["interpreters"]["State 10^4 binds"] = @benchmarkable runstate($ST, 0)
+SUITE["interpreters"]["Effect fork+await"] = @benchmarkable run(andthen(f -> await(f), fork(succeed(1))))
