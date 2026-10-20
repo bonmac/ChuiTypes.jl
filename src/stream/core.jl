@@ -21,7 +21,10 @@ every element, never asserted and never used to convert (`eltype(s)` returns it)
 Failures travel as values: a stream ends either normally or with a [`Cause`](@ref) (`Fail`,
 `Die` for a thrown exception, `Interrupted`). Every run owns a scope: leaving it, by end, error,
 `take` or interruption, stops its fibers and runs its releases (ADR-0003 §7). A user function
-that loops without yielding cannot be interrupted until it returns.
+that loops without yielding cannot be interrupted until it returns. Cancellation is checked at
+every chunk boundary, but a stream of pure chunks never yields to the scheduler: with one
+thread, a real-time `timeout` or an `interrupt!` from another task cannot run until the stream
+waits on something (a source, a queue, the clock), so bound such a stream with `take`.
 """
 struct Stream{T}
     src::Any
@@ -304,8 +307,10 @@ end
 
 A one-element stream of the value `a` that `acquire` succeeds with (run masked). `release(a, exit)`
 (an effect) runs masked, **exactly once**, when that stream's run closes it, whatever ends the
-run; `exit` is `Failure(Interrupted())` when the run was interrupted, else `Success(a)`. A
-failing release fails the run (or joins a failure's [`suppressed`](@ref) list). Use it with
+run. `exit` is `Success(a)` when its stream ended normally or the run closed it early, and
+`Failure(Interrupted())` when the run was interrupted, or when a concurrent operator stopped a
+producer that was still running (for example a `take` after a `merge`). A failing release fails
+the run, also behind concurrent operators (or joins a failure's [`suppressed`](@ref) list). Use it with
 [`concatmap`](@ref): `concatmap(h -> use(h), bracketstream(open_eff, (h, _) -> close_eff(h)))`.
 """
 bracketstream(acquire::Effect{E, A}, release) where {E, A} = _stream(A, _BracketSrc(acquire.node, release))

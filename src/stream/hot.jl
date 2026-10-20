@@ -101,7 +101,10 @@ function _deliver!(s::Subject, pending, x)
     return keep
 end
 
-function _publish(s::Subject, x, ctx::_Ctx)
+function _publish(s::Subject{T}, x0, ctx::_Ctx) where {T}
+    # Convert once, before any delivery (review N8): a failing conversion delivers to nobody and
+    # never half-applies a `:dropoldest` eviction.
+    x = convert(T, x0)
     pending = @lock s.lock (s.closed ? nothing : copy(s.subs))
     pending === nothing && return (true, nothing)
     while true

@@ -26,27 +26,54 @@ function _stopall!(fs, ctx::_Ctx)
     return nothing
 end
 
-# Wait (masked) until `ctx` is cancelled: the lease park of a finished pump (spec §5).
+# Wait (masked) until `ctx` is cancelled (a marble source with no terminal).
 function _parkuntilcancel(ctx::_Ctx)
     _iscancelled(ctx.cancel) && return nothing
     _park!(_Waiter(ctx.rt), ctx.cancel, true)
     return nothing
 end
 
+# A pump's handle for its operator (review B2): the release waiter that ends a leased pump's park
+# **without** cancelling it (so its input's releases see the run's real exit), and the cause its
+# input's close failed with, read by the operator's `_close!` after the pump has ended.
+mutable struct _PumpCtl
+    lease::Bool
+    release::_Waiter
+    closecause::Union{Nothing, Cause}
+    received::Bool                   # the consumer has taken this pump's `:done` (it is parked)
+end
+_PumpCtl(lease::Bool, rt) = _PumpCtl(lease, _Waiter(rt), nothing, false)
+
 """
-A pump: open `src` in this fiber, put every chunk on `q` as `_Msg(tag, …)`, then `:done` or the
-failure. With `lease`, after `:done` it parks until it is cancelled (the operator's close) and only
-then closes its input. `onend()` runs last (mergemap releases its slot there).
+A pump: open `src` in this fiber and put every chunk on `q` as `_Msg(tag, …)`.
+
+- **Leased** (merge, prefetch, time operators): at the input's end it sends `:done` and parks
+  until the operator **releases** it (`_fire!(ctl.release)`, a normal close: the input closes
+  uncancelled) or cancels it (an interrupted or early-stopped run). Its close cause is kept in
+  `ctl.closecause` for the operator's `_close!`.
+- **Not leased** (mergemap/switchmap inners): at the input's end it closes the input **first**, then
+  sends `:done`, or the close failure instead (a blocking `_put!`, so the consumer cannot end
+  before it sees it; review S3).
+
+`onend()` runs last (mergemap releases its slot there).
 """
-function _pump(ctx::_Ctx, src, q::Queue{_Msg}, tag::Int, lease::Bool, onend)
+function _pump(ctx::_Ctx, src, q::Queue{_Msg}, tag::Int, ctl::_PumpCtl, onend)
     p = _sopen(src, ctx)
+    closed = false
     try
         ScopedValues.with(_CTX => ctx) do
             while true
                 r = _spull!(p, ctx)
                 if r === nothing
-                    ok, _ = _put!(q, _Msg(tag, _K_DONE, nothing), ctx)
-                    ok && lease && _parkuntilcancel(ctx)
+                    if ctl.lease
+                        ok, _ = _put!(q, _Msg(tag, _K_DONE, nothing), ctx)
+                        ok && _park!(ctl.release, ctx.cancel, true)
+                    else
+                        c = _sclose!(p, ctx)
+                        closed = true
+                        ctl.closecause = c
+                        _put!(q, c === nothing ? _Msg(tag, _K_DONE, nothing) : _Msg(tag, _K_FAIL, c), ctx)
+                    end
                     return nothing
                 elseif r isa Cause
                     isinterrupted(r) || _put!(q, _Msg(tag, _K_FAIL, r), ctx)
@@ -57,17 +84,44 @@ function _pump(ctx::_Ctx, src, q::Queue{_Msg}, tag::Int, lease::Bool, onend)
             end
         end
     finally
-        c = _sclose!(p, ctx)
-        if c !== nothing && !isinterrupted(c)
-            _tryput!(q, _Msg(tag, _K_FAIL, c))
+        if !closed
+            c = _sclose!(p, ctx)
+            c === nothing || (ctl.closecause = c)
         end
         onend === nothing || onend()
     end
     return nothing
 end
 
-_forkpump(ctx::_Ctx, src, q, tag, lease, onend = nothing) =
-    _forkin(ctx, _fiberbody(c -> _pump(c, src, q, tag, lease, onend)), false)
+function _forkpump(ctx::_Ctx, src, q, tag, lease::Bool, onend = nothing)
+    ctl = _PumpCtl(lease, ctx.rt)
+    f = _forkin(ctx, _fiberbody(c -> _pump(c, src, q, tag, ctl, onend)), false)
+    return f, ctl
+end
+
+# Close leased pumps (review B2): when the run is not cancelled, release the pumps whose `:done`
+# the consumer has taken (they are parked on the release, so their inputs close uncancelled);
+# interrupt the rest (still producing, or blocked on a put nobody will take). Await all, masked;
+# then the close causes, the first one with the others in its suppressed list.
+function _closepumps!(fibers, ctls, ctx::_Ctx)
+    normal = !_iscancelled(ctx.cancel)
+    for (f, c) in zip(fibers, ctls)
+        normal && c.received ? _fire!(c.release) : interrupt!(f)
+    end
+    for f in fibers
+        _awaitfiber(f, ctx.cancel, false, ctx.rt)
+    end
+    return _firstcause(ctls)
+end
+function _firstcause(ctls)
+    cs = Cause[]
+    for ctl in ctls
+        c = ctl.closecause                 # one read: a field re-read does not narrow
+        c === nothing || isinterrupted(c) || push!(cs, c)
+    end
+    isempty(cs) && return nothing
+    return length(cs) == 1 ? cs[1] : _suppress(cs[1], cs[2:end]...)
+end
 
 # Take one message; a cancelled wait is the consumer's interruption.
 function _takemsg!(q::Queue{_Msg}, ctx::_Ctx, deadline::Float64 = Inf)
@@ -85,6 +139,7 @@ end
 mutable struct _MergeP <: _Puller
     q::Queue{_Msg}
     fibers::Vector{Any}
+    ctls::Vector{_PumpCtl}
     n::Int
     done::Int
     closed::Bool
@@ -92,8 +147,8 @@ end
 function _open(s::_MergeSrc, ctx::_Ctx)
     n = length(s.srcs)
     q = Queue{_Msg}(s.capacity)
-    fibers = Any[_forkpump(ctx, s.srcs[i], q, i, true) for i in 1:n]
-    return _MergeP(q, fibers, n, 0, false)
+    pumps = [_forkpump(ctx, s.srcs[i], q, i, true) for i in 1:n]
+    return _MergeP(q, Any[first(x) for x in pumps], _PumpCtl[last(x) for x in pumps], n, 0, false)
 end
 function _pull!(p::_MergeP, ctx::_Ctx)
     while true
@@ -104,6 +159,7 @@ function _pull!(p::_MergeP, ctx::_Ctx)
             return m.val
         elseif m.kind == _K_DONE
             p.done += 1
+            p.ctls[m.tag].received = true
         else
             return m.val::Cause
         end
@@ -113,8 +169,7 @@ end
 function _close!(p::_MergeP, ctx::_Ctx)
     p.closed && return nothing
     p.closed = true
-    _stopall!(p.fibers, ctx)
-    return nothing
+    return _closepumps!(p.fibers, p.ctls, ctx)
 end
 
 """
@@ -156,6 +211,8 @@ mutable struct _MapP <: _Puller
     outerdone::Bool
     expect::Int              # mergemap: inners started; switchmap: the last generation
     innerdone::Int           # mergemap: inner ends seen; switchmap: generation whose end was seen
+    ended::Bool              # the stream ended normally (the coordinator is finishing on its own)
+    cctl::_PumpCtl           # the coordinator's outer close cause
     closed::Bool
 end
 
@@ -163,13 +220,15 @@ function _open(s::_MapSrc, ctx::_Ctx)
     q = Queue{_Msg}(4)
     gen = Threads.Atomic{Int}(0)
     sw = s.maxconcurrent == 0
-    coord = _forkin(ctx, _fiberbody(c -> _coordinate(c, s, q, gen)), false)
-    return _MapP(q, coord, gen, sw, false, 0, 0, false)
+    cctl = _PumpCtl(false, ctx.rt)
+    coord = _forkin(ctx, _fiberbody(c -> _coordinate(c, s, q, gen, cctl)), false)
+    return _MapP(q, coord, gen, sw, false, 0, 0, false, cctl, false)
 end
 
 # The coordinator: pull the outer stream; start an inner pump per element; at the outer's end,
 # report how many inners it started, wait for them, and only then close the outer (the lease).
-function _coordinate(ctx::_Ctx, s::_MapSrc, q::Queue{_Msg}, gen::Threads.Atomic{Int})
+# The outer's close cause goes to `cctl` (review B2), read by the consumer's `_close!`.
+function _coordinate(ctx::_Ctx, s::_MapSrc, q::Queue{_Msg}, gen::Threads.Atomic{Int}, cctl::_PumpCtl)
     sw = s.maxconcurrent == 0
     sem = sw ? nothing : Queue{Nothing}(s.maxconcurrent)
     p = _sopen(s.src, ctx)
@@ -197,13 +256,13 @@ function _coordinate(ctx::_Ctx, s::_MapSrc, q::Queue{_Msg}, gen::Threads.Atomic{
                     if sw
                         g = Threads.atomic_add!(gen, 1) + 1      # bump first (spec §5)
                         cur === nothing || interrupt!(cur)       # no wait: awaited at the exit
-                        cur = _forkpump(ctx, inner, q, g, false)
+                        cur = first(_forkpump(ctx, inner, q, g, false))
                         push!(inners, cur)
                     else
                         ok, _ = _put!(sem, nothing, ctx)         # a slot (cancellable)
                         ok || return nothing
                         n += 1
-                        push!(inners, _forkpump(ctx, inner, q, 0, false, () -> _trytake!(sem)))
+                        push!(inners, first(_forkpump(ctx, inner, q, 0, false, () -> _trytake!(sem))))
                     end
                     length(inners) > 64 && filter!(f -> !_isdone(f), inners)
                 end
@@ -216,20 +275,23 @@ function _coordinate(ctx::_Ctx, s::_MapSrc, q::Queue{_Msg}, gen::Threads.Atomic{
         end
     catch ex
         ex isa InterruptException && rethrow()
-        _tryput!(q, _Msg(0, _K_FAIL, Die(ex, catch_backtrace())))
+        d = Die(ex, catch_backtrace())
+        _tryput!(q, _Msg(0, _K_FAIL, d)) || (cctl.closecause = d)    # never lose a defect
     finally
         _stopall!(inners, ctx)
         c = _sclose!(p, ctx)
-        c === nothing || isinterrupted(c) || _tryput!(q, _Msg(0, _K_FAIL, c))
+        if c !== nothing
+            cctl.closecause = cctl.closecause === nothing ? c : _suppress(something(cctl.closecause), c)
+        end
     end
     return nothing
 end
 
 function _pull!(p::_MapP, ctx::_Ctx)
     while true
-        if p.outerdone
-            p.switch && (p.expect == 0 || p.innerdone == p.expect) && return nothing
-            !p.switch && p.innerdone >= p.expect && return nothing
+        if p.outerdone && (p.switch ? (p.expect == 0 || p.innerdone == p.expect) : p.innerdone >= p.expect)
+            p.ended = true
+            return nothing
         end
         m = _takemsg!(p.q, ctx)
         m isa Cause && return m
@@ -258,8 +320,15 @@ end
 function _close!(p::_MapP, ctx::_Ctx)
     p.closed && return nothing
     p.closed = true
-    _stopall!((p.coord,), ctx)
-    return nothing
+    if p.ended && !_iscancelled(ctx.cancel)
+        # a normal end: every inner has ended, so the coordinator closes the outer on its own,
+        # uncancelled (its releases see the real exit; review B2); wait for it, masked
+        _awaitfiber(p.coord, ctx.cancel, false, ctx.rt)
+    else
+        _stopall!((p.coord,), ctx)
+    end
+    c = p.cctl.closecause
+    return c === nothing || isinterrupted(c) ? nothing : c
 end
 
 """

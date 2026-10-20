@@ -90,3 +90,16 @@ end
     StreamHelpers.waitfor(g)
     @test ChuiTypes.succeeded(g.exit)
 end
+
+@testitem "Subject: a publish that cannot convert delivers to nobody" tags = [:unit] setup = [StreamHelpers] begin
+    # review N8: the conversion ran per subscriber, after a :dropoldest eviction
+    using ChuiTypes
+    using ChuiTypes: _register!, _buffered, isdie, cause
+    subj = Subject{Int}(; capacity = 1, overflow = :dropoldest)
+    a, b = _register!(subj), _register!(subj)
+    run(publish(subj, 1))
+    @test isdie(cause(runexit(publish(subj, "x"))))
+    @test _buffered(a) == [1] && _buffered(b) == [1]
+    run(publish(subj, 2.0))                 # converts, as a typed container does
+    @test _buffered(a) == [2] && _buffered(a)[1] isa Int
+end

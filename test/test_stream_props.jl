@@ -139,6 +139,37 @@
         return passed(r)
     end
 
+    # ---- S5: behind every concurrent operator, a release sees the run's exit and its failure ------
+    # fails the run (review B2/S3/S4).
+    const RELEASE_OPS = Function[
+        prefetch, s -> merge(s, fromiter([0])), s -> debounce(s, 0.5), s -> map(sum, buffertime(s, 1.0)),
+        s -> mergemap(x -> fromiter([x]), s), s -> switchmap(x -> fromiter([x]), s),
+        s -> mergemap(_ -> s, fromiter([1, 2])), s -> switchmap(_ -> s, fromiter([1])),
+        s -> concatmap(x -> fromiter([x]), prefetch(s)),
+    ]
+    function release_case(ops, k, n, failing)
+        seen = Ref{Any}(nothing)
+        res = concatmap(
+            h -> fromiter(1:n),
+            bracketstream(succeed(:h), (a, x) -> sync(() -> (seen[] = x; nothing)) |> e -> failing ? andthen(_ -> fail(:release_failed), e) : e),
+        )
+        op = ops[mod1(k, length(ops))]
+        prog = catchcause(c -> succeed(c), map(_ -> :ok, runcollect(op(res))))
+        c = VirtualClock()
+        r = runtest(prog; clock = c)
+        settled(c) == 0 || return false
+        seen[] == ChuiTypes.Success(:h) || return false
+        return failing ? (r isa ChuiTypes.Cause && ChuiTypes.isfail(r) && ChuiTypes.failure(r) === :release_failed) : r === :ok
+    end
+    function prop_release(ops = RELEASE_OPS)
+        all(k -> release_case(ops, k, 2, isodd(k)), 1:(2 * length(ops))) || return false
+        case = budgeted("release", release_case)
+        r = @check record = false db = false max_examples = MAX (
+            k = Data.Integers(1, 40), n = Data.Integers(0, 4), failing = Data.Booleans(),
+        ) -> case(ops, k, n, failing)
+        return passed(r)
+    end
+
     # ---- S4: a Queue delivers every offered item exactly once, in each producer's order ----------
     function queue_case(offerfn, cap, nprod, nitems, delays)
         q = Queue{Tuple{Int, Int}}(cap)
@@ -187,6 +218,10 @@ end
     @test StreamProps.prop_queue()
 end
 
+@testitem "property: releases behind concurrent operators see the exit and fail the run" tags = [:property] setup = [StreamProps] begin
+    @test StreamProps.prop_release()
+end
+
 @testitem "planted: the stream properties fail on wrong stand-ins" tags = [:property, :laws] setup = [StreamProps] begin
     using ChuiTypes
     # a scan that forgets its state between elements, and a take that restarts per chunk
@@ -203,4 +238,8 @@ end
     # an offer that drops the item when the queue is full instead of waiting
     dropping_offer(q, x) = sync(() -> (ChuiTypes._tryput!(q, x); nothing))
     @test !StreamProps.prop_queue(dropping_offer)
+    # an operator that runs its input and swallows its outcome (a release failure included).
+    # (`catchfail` is not one: a release failure surfaces at close, not as a `Fail` element.)
+    swallowing(s) = concatmap(_ -> emptystream(Int), fromeffect(catchcause(_ -> succeed(nothing), map(_ -> nothing, runcollect(s)))))
+    @test !StreamProps.prop_release(Function[swallowing])
 end

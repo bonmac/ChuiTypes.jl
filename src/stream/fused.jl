@@ -50,7 +50,7 @@ function _pull!(p::_FusedP, ctx::_Ctx)
         return c
     end
     while true
-        r = _pull!(p.up, ctx)
+        r = _spull!(p.up, ctx)          # checks the cancel state: an empty output re-pulls (review B1)
         if r === nothing
             p.done = true
             U.complete(p.rf, p.acc)

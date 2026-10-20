@@ -29,7 +29,7 @@ every checkpoint. Keep it short; history lives in git and in ADRs.
 
 | Lane | Agent | File scope | Status | Report |
 |---|---|---|---|---|
-| `phase4-streams` | types-p4 (lead-dispatched) | `src/**`, `ext/**`, `test/**`, `Project.toml`, `docs/**`, `benchmark/**`, `HANDOFF.md`, `changelog.d/phase4-streams.md`, `.gitignore`, `JuliaTestItems.toml` | implemented; under review | SendMessage to the lead, 2026-10-20 |
+| `phase4-streams` | types-p4 (lead-dispatched) | `src/**`, `ext/**`, `test/**`, `Project.toml`, `docs/**`, `benchmark/**`, `HANDOFF.md`, `changelog.d/phase4-streams.md`, `.gitignore`, `JuliaTestItems.toml` | implemented; review round 1 REJECT (B1, B2, S3–S5, N6–N8), all fixed with RED→GREEN tests; re-review pending | SendMessage to the lead, 2026-10-20 |
 
 ## Decisions waiting (for the lead / the user at the phase-4 ★)
 

@@ -56,7 +56,7 @@ end
 _open(s::_ThrottleSrc, ctx::_Ctx) = _ThrottleP(_sopen(s.src, ctx), s.d, -Inf)
 function _pull!(p::_ThrottleP, ctx::_Ctx)
     while true
-        r = _pull!(p.up, ctx)
+        r = _spull!(p.up, ctx)          # checks the cancel state on every re-pull (review B1)
         (r === nothing || r isa Cause) && return r
         now = _clocknow(ctx)
         if now >= p.last + p.d
@@ -82,12 +82,14 @@ throttle(s::Stream{T}, d::Real) where {T} = _stream(T, _ThrottleSrc(s.src, Float
 mutable struct _TimedIn
     q::Queue{_Msg}
     fiber::Any
+    ctl::_PumpCtl
     pending::Union{Nothing, _Msg}
     closed::Bool
 end
 function _timedin(src, ctx::_Ctx)
     q = Queue{_Msg}(4)
-    return _TimedIn(q, _forkpump(ctx, src, q, 1, true), nothing, false)
+    f, ctl = _forkpump(ctx, src, q, 1, true)
+    return _TimedIn(q, f, ctl, nothing, false)
 end
 # The next message (a stashed one first), or `:timeout` at `deadline`, or a Cause.
 function _next!(t::_TimedIn, ctx::_Ctx, deadline::Float64)
@@ -96,13 +98,14 @@ function _next!(t::_TimedIn, ctx::_Ctx, deadline::Float64)
         t.pending = nothing
         return m
     end
-    return _takemsg!(t.q, ctx, deadline)
+    m = _takemsg!(t.q, ctx, deadline)
+    m isa _Msg && m.kind == _K_DONE && (t.ctl.received = true)
+    return m
 end
 function _closein!(t::_TimedIn, ctx::_Ctx)
     t.closed && return nothing
     t.closed = true
-    _stopall!((t.fiber,), ctx)
-    return nothing
+    return _closepumps!((t.fiber,), (t.ctl,), ctx)
 end
 
 # ---- debounce -----------------------------------------------------------------------------------
@@ -172,6 +175,20 @@ struct _BufTimeSrc
     src::Any
     d::Float64
 end
+# The window `k` with `t0 + k*d <= now < t0 + (k+1)*d`, using the same Float64 boundary
+# expressions the window ends use (review N6: `floor((now - t0) / d)` disagreed with them at
+# about a third of the boundaries for d = 0.1).
+function _windowindex(t0::Float64, d::Float64, now::Float64)
+    k = floor(Int, (now - t0) / d)
+    while t0 + (k + 1) * d <= now
+        k += 1
+    end
+    while t0 + k * d > now
+        k -= 1
+    end
+    return k
+end
+
 mutable struct _BufTimeP <: _Puller
     in::_TimedIn
     d::Float64
@@ -201,7 +218,7 @@ function _pull!(p::_BufTimeP, ctx::_Ctx)
         end
         if m.kind == _K_CHUNK
             if isempty(p.buf)                          # a timer only for a non-empty window
-                k = floor((now - p.t0) / p.d)
+                k = _windowindex(p.t0, p.d, now)
                 p.windowend = p.t0 + (k + 1) * p.d
             end
             append!(p.buf, m.val)

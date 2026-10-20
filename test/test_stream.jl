@@ -184,6 +184,65 @@ end
     @test acq[] == 1 && rel[] == 1
 end
 
+@testitem "Stream: operators that emit nothing still stop at a chunk boundary when cancelled" tags = [:unit] setup = [StreamHelpers] begin
+    # regression (review B1): filter/drop/throttle re-pulled their upstream without the cancel
+    # check, so a stream that emits nothing could never be interrupted
+    using ChuiTypes
+    using ChuiTypes: cause, isinterrupted
+    ops = (
+        "filter" => s -> filter(_ -> false, s),
+        "drop" => s -> Iterators.drop(s, typemax(Int)),
+        "throttle" => s -> throttle(s, 1.0e9),
+    )
+    for (name, op) in ops
+        pulled = Ref(0)
+        self = Ref{Any}(nothing)
+        src = map(x -> (pulled[] += 1; x == 2 && interrupt!(self[]); x), fromiter(1:200_000; chunksize = 1))
+        f = start(runcollect(op(src)); clock = VirtualClock())
+        self[] = f
+        StreamHelpers.waitfor(f; secs = 60)
+        @test isinterrupted(cause(f.exit))
+        @test pulled[] < 100                    # stopped at the next chunk, not at the end
+    end
+end
+
+@testitem "Stream: releases behind concurrent operators see the run's exit; their failures fail it" tags = [:unit] setup = [StreamHelpers] begin
+    # regression (review B2, S3): behind a pump a release saw Failure(Interrupted()) on a normal
+    # end, and a failing release was dropped
+    using ChuiTypes
+    using ChuiTypes: Success, cause, isfail, failure
+    ops = (
+        "prefetch" => prefetch,
+        "merge" => s -> merge(s, fromiter([7])),
+        "debounce" => s -> debounce(s, 0.5),
+        "buffertime" => s -> buffertime(s, 1.0),
+        "mergemap outer" => s -> mergemap(x -> fromiter([x]), s),
+        "switchmap outer" => s -> switchmap(x -> fromiter([x]), s),
+        "mergemap inner" => s -> mergemap(_ -> s, fromiter([1])),
+        "switchmap inner" => s -> switchmap(_ -> s, fromiter([1])),
+    )
+    for (name, op) in ops
+        seen = Ref{Any}(nothing)
+        ok = bracketstream(succeed(:h), (a, x) -> sync(() -> (seen[] = x; nothing)))
+        (v, c) = StreamHelpers.rt(runcollect(op(ok)))
+        @test v isa Vector
+        @test seen[] == Success(:h)
+        bad = bracketstream(succeed(:h), (a, x) -> fail(:release_failed))
+        (cz, _) = StreamHelpers.rt(catchcause(c -> succeed(c), map(_ -> nothing, runcollect(op(bad)))))
+        @test cz isa ChuiTypes.Cause && isfail(cz) && failure(cz) === :release_failed
+    end
+end
+
+@testitem "Stream: buffertime windows agree with their Float64 boundaries" tags = [:unit] begin
+    # review N6: floor((now - t0) / d) put an element at a boundary into the earlier window
+    using ChuiTypes: _windowindex
+    for d in (0.1, 0.3, 1.0 / 3, 0.7), k in 0:2000
+        t = k * d                        # the boundary as the window ends compute it
+        @test _windowindex(0.0, d, t) == k
+        @test _windowindex(0.0, d, prevfloat(t)) == (k == 0 ? -1 : k - 1) || t == 0.0
+    end
+end
+
 @testitem "Stream: functions that never return a stream (inferred Union{})" tags = [:unit] setup = [StreamHelpers] begin
     # regression (law tests): `eltype(Union{})` threw while building these streams
     using ChuiTypes

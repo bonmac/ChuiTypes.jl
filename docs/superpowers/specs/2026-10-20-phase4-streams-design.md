@@ -142,7 +142,14 @@ CT-003 checks every export against Base, Core and the loaded stdlibs.
   itself closed, or when nothing downstream can still use that upstream's elements:
   - a `merge`/`prefetch`/time-operator pump that reaches its input's end sends `:done` and then
     **parks until the operator closes it**, and only then closes its input (a fixed number of
-    pumps per operator, so parked pumps are bounded);
+    pumps per operator, so parked pumps are bounded). On a normal close the operator **releases**
+    the parked pump (a waiter, not a cancel), so its input's releases see `Success`; it cancels
+    only pumps still producing, or all of them when the run is interrupted. The pump keeps its
+    close cause, which the operator's `_close!` returns, so a failing release fails the run
+    (review B2);
+  - a pump without a lease (`mergemap`/`switchmap` inners) closes its input **before** sending
+    `:done`, and sends the close failure in its place with a blocking put, so the consumer cannot
+    end before it sees it (review S3);
   - the `mergemap`/`switchmap` coordinator closes its outer puller only after every inner it
     started has ended, so `mergemap(h -> lines(h), bracketstream(open, close))` releases `h`
     after the inners that read it;
@@ -175,7 +182,8 @@ An element's time is the time its chunk is pulled by the operator.
 - `buffertime(s, d)`: a pump; emits the elements gathered in each window `[t0 + kd, t0 + (k+1)d)`
   as one vector, skipping empty windows (unlike Rx, which emits empty buffers); at the end,
   emits the partial window. **Ties by time:** an element at exactly a window boundary belongs to
-  the next window. A window timer is scheduled only while the current window holds elements, so
+  the next window; boundaries are the Float64 values `t0 + k*d`, and the window of a time is
+  found against those same values (review N6). A window timer is scheduled only while the current window holds elements, so
   an idle source schedules no timers (no endless virtual-time loop under `runtest`).
 - `timer(d)`: cold, one element `0` after `d` seconds, then the end (ADR-0003 §9). `interval`
   and `timer` are **cold** here (each run has its own ticks from its subscription); ADR-0003 §5
