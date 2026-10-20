@@ -25,6 +25,11 @@ export These
 export NonEmpty, nonempty
 export LazyList, lazylist, lazycons, lazynil
 
+# Phase 3: Reader, Writer, State (ADR-0007)
+export Reader, ask, asks, withreader, runreader
+export Writer, tell, listening, censor, runwriter
+export State, getstate, putstate, modifystate, runstate
+
 # Phase 3: the effect runtime (ADR-0002, ADR-0006; spec 2026-10-20-phase3-effects-design.md §1)
 export andthen
 export Effect, succeed, fail, die, sync, attempt, defer
@@ -38,6 +43,7 @@ export recurs, spaced, exponential
 export async, fromtask, totask
 
 @compat public this, that, both, isthis, isthat, isboth, here, there
+@compat public ReaderTag, WriterTag, StateTag
 @compat public EffectTag, fromexit, Success, Failure, Fail, Die, Interrupted
 @compat public succeeded, isfail, isdie, isinterrupted, cause, value, failure, suppressed
 @compat public RealClock, AbstractClock, Schedule, livefibers, orphans
@@ -54,6 +60,10 @@ include("validation.jl")
 include("these.jl")
 include("nonempty.jl")
 include("lazylist.jl")
+include("rws.jl")
+include("reader.jl")
+include("writer.jl")
+include("state.jl")
 include("effect/types.jl")
 include("effect/context.jl")
 include("effect/interpreter.jl")

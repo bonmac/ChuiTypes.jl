@@ -12,6 +12,10 @@ end
             :Either, :left, :right, :isleft, :isright, :fromleft, :fromright,
             :Validation, :valid, :invalid, :isinvalid, :errors,
             :These, :NonEmpty, :nonempty, :LazyList, :lazylist, :lazycons, :lazynil,
+            # phase 3: Reader, Writer, State (ADR-0007)
+            :Reader, :ask, :asks, :withreader, :runreader,
+            :Writer, :tell, :listening, :censor, :runwriter,
+            :State, :getstate, :putstate, :modifystate, :runstate,
             # phase 3: the effect runtime (spec 2026-10-20-phase3-effects-design.md §1)
             :andthen, :Effect, :succeed, :fail, :die, :sync, :attempt, :defer,
             :Exit, :Cause, :runexit, :EffectFailed, :Cancelled, :MissingService,
@@ -26,6 +30,7 @@ end
     public_only = Set(
         [
             :this, :that, :both, :isthis, :isthat, :isboth, :here, :there,
+            :ReaderTag, :WriterTag, :StateTag,
             :EffectTag, :fromexit, :Success, :Failure, :Fail, :Die, :Interrupted,
             :succeeded, :isfail, :isdie, :isinterrupted, :cause, :value, :failure, :suppressed,
             :RealClock, :AbstractClock, :Schedule, :livefibers, :orphans,

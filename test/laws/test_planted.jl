@@ -170,3 +170,32 @@ end
     failed, _ = L.planted(() -> L.test_traversable_laws(nothing, map(Peek, L.ints), nonid, L.eitherfns))
     @test "traversable: naturality" in failed
 end
+
+@testitem "planted: State effect order and the run-both-sides eq" tags = [:laws] setup = [LawKits] begin
+    # test/laws/test_laws_rws.jl compares State programs by running both sides from several
+    # initial states. A State wrapper whose `ap` runs the argument's effects before the
+    # function's must fail "monad: ap is chain" under that `eq`, and pass it under an `eq` that
+    # only compares values from one state (so the comparison of final states is what catches it).
+    using ChuiTypes, Supposition
+    const L = LawKits
+    const U = ChuiTypes.Upstream
+    struct Flip
+        m::State{Int}
+    end
+    struct FlipTag end
+    const T = ChuiTypes.StateTag{Int}()
+    U.pure(::FlipTag, x) = Flip(U.pure(T, x))
+    U.fmap(f, a::Flip) = Flip(map(f, a.m))
+    U.chain(k, a::Flip) = Flip(andthen(x -> k(x).m, a.m))
+    U.ap(ff::Flip, fx::Flip) = Flip(andthen(x -> map(f -> f(x), ff.m), fx.m))   # wrong order
+    eq(a, b) = all(s -> isequal(runstate(a.m, s), runstate(b.m, s)), (0, 1, -3, 7))
+    weak(a, b) = isequal(first(runstate(a.m, 0)), first(runstate(b.m, 0)))
+    # programs whose value does not depend on the state, so only the final state shows the order
+    flips = map(x -> iseven(x) ? Flip(andthen(_ -> U.pure(T, x), modifystate(s -> s + x, Int))) : Flip(U.pure(T, x)), L.ints)
+    kf = Data.SampledFrom(Function[x -> Flip(U.pure(T, x + 1)), x -> Flip(map(s -> s + x, getstate(Int)))])
+    ff = Data.SampledFrom(Any[Flip(andthen(_ -> U.pure(T, x -> x + 1), putstate(5))), Flip(U.pure(T, x -> 2x))])
+    failed, passed = L.planted(() -> L.test_monad_laws(FlipTag(), L.ints, flips, kf, ff; eq))
+    @test "monad: ap is chain" in failed
+    @test "monad: associativity" in passed && "monad: left identity" in passed
+    @test "monad: ap is chain" in last(L.planted(() -> L.test_monad_laws(FlipTag(), L.ints, flips, kf, ff; eq = weak)))
+end
