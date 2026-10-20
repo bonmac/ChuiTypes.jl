@@ -17,10 +17,13 @@ function _sleep(::RealClock, d::Float64, ctx::_Ctx)
     end
 end
 
-function _addtimer!(c::VirtualClock, due::Float64, w::_Waiter)
+function _addtimer!(c::VirtualClock, due::Float64, w::_Waiter, seq::Int = 0)
     return @lock c.lock begin
-        c.seq += 1
-        tm = _VTimer(due, c.seq, w, true)
+        if seq == 0
+            c.seq += 1
+            seq = c.seq
+        end
+        tm = _VTimer(due, seq, w, true)
         i = searchsortedlast(c.timers, tm; by = x -> (x.due, x.seq)) + 1
         insert!(c.timers, i, tm)
         tm
@@ -31,6 +34,33 @@ function _sleep(c::VirtualClock, d::Float64, ctx::_Ctx)
     d <= 0 && return (true, nothing)
     w = _Waiter(ctx.rt)
     tm = _addtimer!(c, _now(c) + d, w)
+    ok = _park!(w, ctx.cancel, _interruptible(ctx))
+    if !ok
+        @atomic tm.alive = false
+        @lock c.lock filter!(x -> x !== tm, c.timers)
+        return (false, Interrupted())
+    end
+    return (true, nothing)
+end
+
+# Reserve `n` consecutive timer sequence numbers now: timers created later with them sort as if
+# they had been scheduled at this moment (marble sources, phase-4 spec §13).
+function _reserveseq!(c::VirtualClock, n::Int)
+    return @lock c.lock begin
+        s = c.seq + 1
+        c.seq += max(n, 1)
+        s
+    end
+end
+
+# Wait until clock time `due`; with a VirtualClock and `seq > 0`, the timer uses that reserved
+# sequence number. `(true, nothing)` or `(false, Interrupted())`.
+function _sleepuntil(ctx::_Ctx, due::Float64, seq::Int = 0)
+    c = _clockof(ctx)
+    c isa VirtualClock || return _sleep(c, due - _now(c), ctx)
+    _now(c) >= due && return (true, nothing)
+    w = _Waiter(ctx.rt)
+    tm = _addtimer!(c, due, w, seq)
     ok = _park!(w, ctx.cancel, _interruptible(ctx))
     if !ok
         @atomic tm.alive = false

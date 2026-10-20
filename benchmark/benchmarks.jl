@@ -44,3 +44,43 @@ SUITE["interpreters"] = BenchmarkGroup()
 SUITE["interpreters"]["Effect 10^4 binds"] = @benchmarkable run($EFF)
 SUITE["interpreters"]["State 10^4 binds"] = @benchmarkable runstate($ST, 0)
 SUITE["interpreters"]["Effect fork+await"] = @benchmarkable run(andthen(f -> await(f), fork(succeed(1))))
+
+# Phase 4: ADR-0003's cost claims ("fused operators cost what an iterator does; concurrency costs
+# per chunk, not per item"). Real clock. Per-element cost = median time / element count; the
+# "base" entries are the plain-Base baselines for the same work. Inputs of 10^6 elements.
+const SN = 10^6
+const SV = collect(1:SN)
+succ(x) = x + 1
+stream_pipeline(n) = run(runcollect(filter(iseven, map(succ, fromiter(1:n)))))
+base_pipeline(n) = filter(iseven, map(succ, 1:n))
+stream_fold(n) = run(runfold(+, 0, map(succ, fromiter(1:n))))
+# Over the Vector, not 1:n: LLVM folds the range version to a closed form (measured 0 ns).
+base_fold(v) = foldl(+, Iterators.map(succ, v); init = 0)
+stream_merge4(n) = (q = n ÷ 4; run(runfold(+, 0, merge((fromiter(1:q) for _ in 1:4)...))))
+stream_prefetch(n) = run(runfold(+, 0, prefetch(fromiter(1:n))))
+stream_mergemap(k, m) = run(runfold(+, 0, mergemap(_ -> fromiter(1:m), fromiter(1:k); maxconcurrent = 16)))
+stream_mapfilterscan(v) = run(runfold(+, 0, scan(+, 0, filter(iseven, map(succ, fromiter(v))))))
+
+"""
+    streams_allocs_per_chunk(v = SV) -> (bytes_per_chunk, chunks)
+
+Bytes allocated by a warmed run of the fused map/filter/scan pipeline over the Vector{Int} `v`,
+divided by its number of source chunks (`fromiter`'s default chunk size). Reported, not asserted.
+"""
+function streams_allocs_per_chunk(v = SV)
+    stream_mapfilterscan(v)
+    stream_mapfilterscan(v)
+    bytes = @allocated stream_mapfilterscan(v)
+    chunks = cld(length(v), ChuiTypes._CHUNK)
+    return bytes / chunks, chunks
+end
+
+SUITE["streams"] = BenchmarkGroup()
+SUITE["streams"]["fused map/filter collect 10^6"] = @benchmarkable stream_pipeline($SN)
+SUITE["streams"]["base map/filter collect 10^6"] = @benchmarkable base_pipeline($SN)
+SUITE["streams"]["fused map runfold 10^6"] = @benchmarkable stream_fold($SN)
+SUITE["streams"]["base map foldl 10^6"] = @benchmarkable base_fold($SV)
+SUITE["streams"]["merge 4x2.5e5"] = @benchmarkable stream_merge4($SN)
+SUITE["streams"]["prefetch 10^6"] = @benchmarkable stream_prefetch($SN)
+SUITE["streams"]["mergemap 100x10^4 mc16"] = @benchmarkable stream_mergemap(100, 10^4)
+SUITE["streams"]["fused map/filter/scan Vector 10^6"] = @benchmarkable stream_mapfilterscan($SV)

@@ -102,6 +102,13 @@ They run on the one runtime (ADR-0002). Facts from
 ## Consequences
 
 - Fused operators cost what an iterator does. Concurrency costs per chunk, not per item.
+  - **Measured 2026-10-20 (phase 4), this claim is NOT met yet.** On 1.13.2, one thread, on a
+    loaded machine (load average 19.9–22.6 on 12 cores), fused `map`/`filter` collect cost
+    about 5.5× the Base equivalent on a `Vector` (median 3.84 vs 0.70 ns per element),
+    `runfold` about 43× Base `foldl` (5.29 vs 0.12 ns), with about 24 allocations / 15 KB per
+    1024-element chunk. The per-chunk concurrency claim is consistent: `merge`, `prefetch` and
+    `mergemap` cost 3.4–7.1 ns per element. Evidence: `.lanes/evidence/bench-streams-bd8bcc0.txt`.
+    Meeting the claim is a **phase-5 target**.
 - Streams come after the runtime's `Queue`, `Scope`, clock and test mode (phase 3), so they land
   in phase 4.
 - A chunk adds latency for sparse sources; partial chunks bound it, and phase 4 tests this.

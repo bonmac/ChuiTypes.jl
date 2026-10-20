@@ -25,6 +25,13 @@ end
             :bracket, :acquirerelease, :ensuring,
             :delay, :clocktime, :VirtualClock, :advance!, :runtest,
             :recurs, :spaced, :exponential, :async, :fromtask, :totask,
+            # phase 4: futures and streams (spec 2026-10-20-phase4-streams-design.md §1)
+            :Queue, :offer, :receive,
+            :Stream, :fromiter, :fromeffect, :emptystream, :failstream, :interval, :timer, :bracketstream,
+            :scan, :buffer, :window, :concat, :concatmap, :mergemap, :switchmap, :prefetch,
+            :debounce, :throttle, :buffertime, :windowtime, :Subject, :publish, :subscribe,
+            :runcollect, :runfold, :runforeach, :runchunks, :withbatches, :collectpar,
+            :fromchannel, :tochannel,
         ]
     )
     public_only = Set(
@@ -34,6 +41,7 @@ end
             :EffectTag, :fromexit, :Success, :Failure, :Fail, :Die, :Interrupted,
             :succeeded, :isfail, :isdie, :isinterrupted, :cause, :value, :failure, :suppressed,
             :RealClock, :AbstractClock, :Schedule, :livefibers, :orphans,
+            :QueueClosed, :StreamTag, :marbles, :marbletrace,
         ]
     )
     @test Set(filter(n -> Base.isexported(ChuiTypes, n), names(ChuiTypes))) == exported ∪ Set([:ChuiTypes])

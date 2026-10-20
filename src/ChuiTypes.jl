@@ -56,6 +56,19 @@ export async, fromtask, totask
 @compat public succeeded, isfail, isdie, isinterrupted, cause, value, failure, suppressed
 @compat public RealClock, AbstractClock, Schedule, livefibers, orphans
 
+# Phase 4: futures and streams (ADR-0003, ADR-0006, ADR-0008; spec 2026-10-20-phase4-streams-design.md §1)
+export Queue, offer, receive
+export Stream, fromiter, fromeffect, emptystream, failstream, interval, timer, bracketstream
+export scan, buffer, window
+export concat, concatmap, mergemap, switchmap, prefetch
+export debounce, throttle, buffertime, windowtime
+export Subject, publish, subscribe
+export runcollect, runfold, runforeach, runchunks, withbatches
+export collectpar
+export fromchannel, tochannel
+
+@compat public QueueClosed, StreamTag, marbles, marbletrace
+
 # Token for the inner constructors: values are built only through the documented constructors.
 struct _New end
 const _NEW = _New()
@@ -81,5 +94,15 @@ include("effect/clock.jl")
 include("effect/combinators.jl")
 include("effect/schedule.jl")
 include("effect/adapters.jl")
+include("stream/queue.jl")
+include("stream/core.jl")
+include("stream/fused.jl")
+include("stream/sequential.jl")
+include("stream/concurrent.jl")
+include("stream/time.jl")
+include("stream/hot.jl")
+include("stream/adapters.jl")
+include("stream/marbles.jl")
+include("stream/futures.jl")
 
 end # module ChuiTypes
