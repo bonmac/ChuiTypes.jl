@@ -41,8 +41,10 @@ end
 # A ^C at the root: cancel the whole tree this context belongs to (ADR-0002 §11).
 function _rootcancel!(ctx::_Ctx)
     cs = ctx.cancel
-    while cs.parent !== nothing
-        cs = cs.parent
+    while true
+        p = cs.parent
+        p === nothing && break
+        cs = p
     end
     _cancel!(cs)
     return nothing

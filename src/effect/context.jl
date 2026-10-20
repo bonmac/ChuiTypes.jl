@@ -173,12 +173,16 @@ function _park!(w::_Waiter, cs::_CancelState, interruptible::Bool)
     (@atomic w.fired) && return true
     interruptible && _iscancelled(cs) && return false
     interruptible && @lock cs.lock push!(cs.waiters, w)
-    return try
+    fired = false
+    try
         lock(w.cond)
         try
             while true
-                (@atomic w.fired) && return true
-                interruptible && _iscancelled(cs) && return false
+                if @atomic w.fired
+                    fired = true
+                    break
+                end
+                interruptible && _iscancelled(cs) && break
                 if w.rt !== nothing && !(@atomicswap w.counted = true)
                     _rtparked!(w.rt, 1)
                 end
@@ -191,6 +195,7 @@ function _park!(w::_Waiter, cs::_CancelState, interruptible::Bool)
         _uncount!(w)
         interruptible && @lock cs.lock delete!(cs.waiters, w)
     end
+    return fired
 end
 
 # ---- Environment -----------------------------------------------------------------------------
