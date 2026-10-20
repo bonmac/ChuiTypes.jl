@@ -63,6 +63,11 @@ They run on the one runtime (ADR-0002). Facts from
    - Under `:block`, the slowest subscriber paces the publisher. A consumer that emits into its
      own blocked source deadlocks; this is documented, and `:dropnewest` is suggested there.
    - Hot sources emit partial chunks, so they never wait to fill 1024 items.
+   - **Amended 2026-10-20 (user at the phase-4 ★).** `interval` and `timer` are **cold**: each run
+     has its own ticks on the environment clock, from its own subscription (a hot timer is a
+     `Subject` fed by a cold one). `Subject` subscribers and publishers wait on the runtime's
+     cancellable waits (`_park!`) directly, not through ADR-0006 `async`; the semantics are the
+     ones `async` would give (the waiter's own cancel state is the canceller).
 6. **Running a stream is an effect.** `runcollect`, `runfold` and `runforeach` (names PROVISIONAL)
    return `Effect`s. Streams have no scheduler or cancellation of their own (contract
    obligation 1).
@@ -102,6 +107,13 @@ They run on the one runtime (ADR-0002). Facts from
 ## Consequences
 
 - Fused operators cost what an iterator does. Concurrency costs per chunk, not per item.
+  - **Measured 2026-10-20 (phase 4), this claim is NOT met yet.** On 1.13.2, one thread, on a
+    loaded machine (load average 19.9–22.6 on 12 cores), fused `map`/`filter` collect cost
+    about 5.5× the Base equivalent on a `Vector` (median 3.84 vs 0.70 ns per element),
+    `runfold` about 43× Base `foldl` (5.29 vs 0.12 ns), with about 24 allocations / 15 KB per
+    1024-element chunk. The per-chunk concurrency claim is consistent: `merge`, `prefetch` and
+    `mergemap` cost 3.4–7.1 ns per element. Evidence: `.lanes/evidence/bench-streams-bd8bcc0.txt`.
+    Meeting the claim is a **phase-5 target**.
 - Streams come after the runtime's `Queue`, `Scope`, clock and test mode (phase 3), so they land
   in phase 4.
 - A chunk adds latency for sparse sources; partial chunks bound it, and phase 4 tests this.

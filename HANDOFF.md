@@ -5,70 +5,72 @@ every checkpoint. Keep it short; history lives in git and in ADRs.
 
 ## State
 
-- **Branch:** `feat/phase3-effects`, cut from `main` at `dc1882c` (phases 1 and 2 merged). It is
+- **Branch:** `feat/phase4-streams`, cut from `main` at `bd8bcc0` (phases 1–3 merged). It is
   **not merged**: it waits for the lead's review and merge.
 - **Remote:** none pushed from this lane.
-- **Phase:** **phase 3 (Reader/Writer/State, the effect runtime, its adapters) is implemented**
-  on the branch.
-  - Spec: `docs/superpowers/specs/2026-10-20-phase3-effects-design.md` (decisions ADRs 0002,
-    0006 and 0007 leave open, and the proposed names, §1). Plan:
-    `docs/superpowers/plans/2026-10-20-phase3-effects.md`.
-  - ADR-0007 (**Proposed**): Reader/Writer/State are erased node trees with one declared
-    parameter (`Reader{R}`, `Writer{W}`, `State{S}`), run by an explicit-stack interpreter.
-    Measured (`rws-*`, `rwsdeep-*` evidence), critiqued (critic: ACCEPT WITH FIXES; fixes applied).
-  - `src/rws.jl`, `reader.jl`, `writer.jl`, `state.jl` (sub-lane `rws`, copied in as commit
-    `267bc6c`); `src/effect/` (types, context, interpreter, fiber, api, clock, combinators,
-    schedule, adapters).
-  - Tests: unit (`test_effect.jl`, `test_reader/writer/state.jl`), laws (`test/laws/
-    test_laws_effect.jl`, `test_laws_rws.jl`), properties with planted violations
-    (`test_effect_props.jl`), leak stress (`test_effect_stress.jl`, `:slow`).
-- **Dependencies:** `Compat = "4.10"`, **`ScopedValues = "1.6"` (new, ADR-0005)**. ChuiCore is
-  still unreleased and is not a dependency.
-- **Not built (phase 4 or later):** streams, `Queue`, `fromchannel`/`tochannel`, futures,
-  semaphores, `jittered` schedules (needs a random source; `Random` is not a dependency).
-- **Evidence files:** `.lanes/evidence/` (gitignored), keyed to the lane's commits; the lane's
-  report lists the commands and counts.
+- **Phase:** **phase 4 (futures and streams) is implemented** on the branch.
+  - Spec: `docs/superpowers/specs/2026-10-20-phase4-streams-design.md` (critic: ACCEPT WITH
+    FIXES; fixes applied). ADR-0008 (**Accepted** at the phase-4 ★): a bounded stream becomes a ChuiFrames Source
+    by a snapshot (`runchunks`).
+  - `src/stream/`: `queue.jl` (Queue), `core.jl` (Stream, protocol, driver, sources, run
+    functions, `withbatches`), `fused.jl` (transducer-fused element operators), `sequential.jl`
+    (concat, concatmap, catchfail, retry), `concurrent.jl` (pumps, merge, prefetch, mergemap,
+    switchmap), `time.jl` (interval, timer, throttle, debounce, buffertime, windowtime), `hot.jl`
+    (Subject), `adapters.jl` (fromchannel, tochannel), `marbles.jl`, `futures.jl` (collectpar).
+    `src/upstream.jl` gains transducer stand-ins mirroring ChuiCore's protocol.
+  - Tests: `test_queue.jl`, `test_stream.jl`, `test_stream_marbles.jl`, `test_stream_hot.jl`,
+    `test_stream_adapters.jl`, `test_stream_source.jl`, `test_futures.jl`,
+    `test_stream_props.jl` (properties + planted), `laws/test_laws_stream.jl`,
+    `test_stream_stress.jl` (`:slow`). Benchmarks: `benchmark/benchmarks.jl` group `streams`.
+- **Dependencies:** unchanged (`Compat`, `ScopedValues`). ChuiCore is still not a dependency.
+- **Evidence files:** `.lanes/evidence/` (gitignored); the lane's report lists commands and counts.
 
 ## Open lanes
 
 | Lane | Agent | File scope | Status | Report |
 |---|---|---|---|---|
-| `phase3-effects` | types-p3 (lead-dispatched) | `src/**`, `ext/**`, `test/**`, `Project.toml`, `docs/**`, `benchmark/**`, `HANDOFF.md`, `changelog.d/phase3-effects.md`, `.gitignore` | implemented; reviewer FINAL ACCEPT at `37ec1ad`; waiting for the lead's merge | SendMessage to the lead, 2026-10-20 |
+| `phase4-streams` | types-p4 (lead-dispatched) | `src/**`, `ext/**`, `test/**`, `Project.toml`, `docs/**`, `benchmark/**`, `HANDOFF.md`, `changelog.d/phase4-streams.md`, `.gitignore`, `JuliaTestItems.toml` | implemented; review round 1 REJECT (B1, B2, S3–S5, N6–N8), all fixed with RED→GREEN tests; reviewer **FINAL ACCEPT** at `f72bed8`; waiting for the lead's merge | SendMessage to the lead, 2026-10-20 |
 
-Follow-ups the reviewer left as NITs (not fixed on this branch): `_race`/`_zippar` should `_stop!`
-their children in a `try/finally`, so a ^C escaping a masked wait cannot strand them (N-a); the
-stress test's test-mode section runs `runtest` in a non-sticky task, and should use a sticky one (N-b).
+Follow-up the reviewer left as a NIT (not fixed on this branch): a non-leased pump's close cause
+is kept in a `_PumpCtl` the coordinator discards, so an inner whose input failed **and** whose
+close failed loses the close cause from the failure's `suppressed` list, as does a superseded
+`switchmap` inner's close failure (`src/stream/concurrent.jl`, `first(_forkpump(...))`).
 
-## Decisions waiting (for the lead / the user at the phase-3 ★)
+## Decisions taken (user at the phase-4 ★, 2026-10-20; all as recommended)
 
-1. **ADR-0007** (Reader/Writer/State encoding): Proposed; accept or amend.
-2. **Names** (spec §1): every new export and public name. Notable choices: `andthen` as the
-   public bind (the `Upstream.chain` stand-in stays internal); `succeeded` (not `issuccess`,
-   which LinearAlgebra exports); `listening`/`withreader` (avoid `Sockets.listen` and the
-   `local` keyword); `getstate`/`putstate` (avoid `Base.get`).
-3. **Semantics to confirm:** a child failure fails its scope even when the parent awaited the
-   child (Kotlin semantics; `race`/`timeout`/`zippar` use unsupervised children). `timeout`'s
-   `none(A)` uses the advisory `A`. Inside a masked region, the hidden children of
-   `race`/`timeout`/`zippar`/`fromtask(f)` are detached from the fiber's cancellation (so they
-   work in releases); a user `fork` there is still cancelled with its scope.
-   **Test mode and foreign tasks:** virtual time is frozen while a `fromtask(t::Task)` runs, so
-   `timeout(fromtask(t), d)` never expires on a slow `t` under `runtest`; `advance!`/`runtest`
-   throw after the wall-clock timeout instead, and an abandoned `t` keeps test mode busy (this
-   changes how ADR-0013's orphan rule looks under `runtest`).
-4. Carried over: the `docs/CHECK_COVERAGE.md` row for the ChuiCore grep test, and requests R1–R5
-   (ADR-0004 §7), still with the coordinator.
+1. **ADR-0008** (bounded stream → Source by snapshot): **Accepted**.
+2. **Names** (spec §1): accepted as proposed.
+3. **ADR-0003 §5 amended** (dated): `interval`/`timer` are cold, a clock per run; `Subject` parks
+   directly on the runtime.
+4. **ADR-0004 §2 note** (dated): the `Upstream` transducer stand-ins are within the rule for now;
+   switching to ChuiCore 0.0.1 is phase-5 item 1.
+5. **`bracketstream`'s `Interrupted` exit** under a concurrent stop (a producer still running) is
+   confirmed as documented.
+6. **R10** stays open (ChuiFrames' Task shim); the lead files the draft requests (export tiers,
+   CT IDs, the `chui-types.md` "Stream as a Source" amendment, the reproducer fix) after merging.
+
+## Phase 5, in order
+
+1. **Switch `Upstream` to ChuiCore 0.0.1** (ADR-0004 §3, and the §2 note of 2026-10-20): the
+   typeclass and transducer stand-ins become `using ChuiCore: …`, instance methods get typed
+   styles (rule N5), contract tests start running.
+2. **ADR-0003's "fused operators cost what an iterator does" is NOT met** (ADR-0003 "Measured
+   2026-10-20"; `.lanes/evidence/bench-streams-bd8bcc0.txt`, loaded machine): fused map/filter
+   collect about 5.5× Base, `runfold` about 43× `foldl`, about 24 allocations / 15 KB per
+   1024-element chunk. Suspected causes, **UNVERIFIED** (not profiled): the untyped `runfold`
+   accumulator (`Ref{Any}`), the sink's growth without a size hint, per-chunk closures. A
+   pre-sized-buffer change was left out of this branch because it was not measured.
 
 ## Checks NOT run, and why
 
 - Julia 1.14 (alpha) and 1.12: no runnable binaries locally.
 - `ci.jl contracts`: skips (waiting): `test/contracts/upstreams.toml` has no ChuiCore URL.
 - GitHub workflows: no remote from this lane.
-- Benchmarks were added to `benchmark/` but not run as a suite on an idle machine.
-- **Stale `origin/main` (the lead's).** `scripts/lane audit` and `dod.jl --base main` compare
-  against `origin/main` until the lead pushes; `dod.jl --base dc1882c` gives this branch's
-  true diff.
+- Benchmarks: one run on a loaded machine (1.13.2, one thread); not on 1.10, not idle.
+- **Stale `origin/main` (the lead's).** `scripts/lane audit` and `dod.jl --base main` may compare
+  against `origin/main`; `dod.jl --base bd8bcc0` gives this branch's true diff.
 
 ## Next action
 
-After the lead merges: phase 4 (futures and streams on `Queue`, `Scope`, the clock and test
-mode), in a new lane. At ChuiCore's first snapshot: the switch-over of ADR-0004 §3.
+The lead's merge (the phase-4 ★ is answered, above). Then phase 5, in the order above: the
+ChuiCore 0.0.1 switch-over first, then the stream cost work.

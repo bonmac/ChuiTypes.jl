@@ -49,6 +49,11 @@
      ChuiCore as requests.
    - The stand-ins follow the prototype's semantics and carry no extra API, so they stay a
      placeholder, not a copy.
+   - **Note 2026-10-20 (user at the ChuiTypes phase-4 ★).** The phase-4 transducer stand-ins
+     (`Map`, `Filter`, `Take`, `TakeWhile`, `Scan`, `Partition`, `Composed`, `Reduced`, `asrf`,
+     `start`/`next`/`complete`, `opcompose`) re-implement ChuiCore's protocol with its names and
+     fields; they are **within this rule for now**. Switching them to ChuiCore 0.0.1 (§3) is
+     phase-5 item 1, ahead of the stream cost work.
 3. **Switch-over.**
    - When names, signatures and trait encoding match, adopting a ChuiCore snapshot is a
      **one-file change**: each stand-in becomes `using ChuiCore: x` or `const x = ChuiCore.y`.
