@@ -1,4 +1,4 @@
-# The bounded Source path (R10; ADR-0008, Proposed; phase-4 spec §10). A mock of ChuiFrames'
+# The bounded Source path (R10; ADR-0008, Accepted; phase-4 spec §10). A mock of ChuiFrames'
 # CF-011 Source built only from ChuiTypes' public stream API (no ChuiFrames dependency).
 
 @testitem "Source path: snapshot at construction, schema from eltype, stable plans" tags = [:unit] setup = [StreamHelpers] begin

@@ -2,7 +2,8 @@
 
 - **Lane:** `phase4-streams`, branch `feat/phase4-streams`, from `main` at `bd8bcc0`.
 - **Tier:** T2 (public API). Binding inputs: ADR-0002, ADR-0003, ADR-0004, ADR-0006, ADR-0007,
-  ecosystem ADR-0013, request R10, and ADR-0008 (Proposed in this phase).
+  ecosystem ADR-0013, request R10, and ADR-0008 (proposed in this phase; Accepted at the
+  phase-4 ★, 2026-10-20, with every name in §1 and the ADR-0003 §5 and ADR-0004 §2 notes).
 - **Scope:** the decisions those ADRs leave open. Where this spec and an ADR disagree, the ADR
   wins and this spec is wrong.
 - **Out of scope:** performance work (phase 5). Measured on this branch, iterator-level cost is
@@ -264,7 +265,7 @@ An element's time is the time its chunk is pulled by the operator.
   within about 10 ms, and a `put!` that throws on the closed channel stops it at once. The
   timer is closed when the fiber ends.
 
-## 10. The bounded Source path (R10; ADR-0008, Proposed)
+## 10. The bounded Source path (R10; ADR-0008, Accepted)
 
 ChuiTypes **guarantees** what a ChuiFrames adapter (in ChuiFrames, ecosystem ADR-0002 §1) needs
 to build a CF-011 bounded `Source` by **snapshotting at construction**, as `TablesSource` does for

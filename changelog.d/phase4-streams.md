@@ -1,5 +1,6 @@
-- Phase 4 (futures and streams), per ADR-0003, ADR-0006 and the new ADR-0008 (Proposed). Spec
-  `docs/superpowers/specs/2026-10-20-phase4-streams-design.md`; all names are proposals for the
+- Phase 4 (futures and streams), per ADR-0003 (§5 amended 2026-10-20), ADR-0006 and the new
+  ADR-0008 (Accepted at the phase-4 ★). Spec
+  `docs/superpowers/specs/2026-10-20-phase4-streams-design.md`; the names were accepted at the
   phase-4 ★.
 - `Queue{T}(capacity)`, `offer`, `receive`, `close` (public `QueueClosed`): the runtime's bounded
   queue; every wait ends on the caller's own cancellation, and wake-ups are broadcasts.
@@ -30,4 +31,4 @@
 - Tests: unit and marble tests for every operator in the brief's list; property tests with
   planted violations (fusion vs the list model, cancellation leaves no live fiber and releases
   once, marble round trip, queue exactly-once); Stream law tests; `:slow` stress tests (real-time
-  section in a child process). ADR-0008 (Proposed): the bounded stream → ChuiFrames Source path.
+  section in a child process). ADR-0008 (Accepted): the bounded stream → ChuiFrames Source path.

@@ -1,6 +1,7 @@
 # ADR-0008: A bounded stream becomes a ChuiFrames Source by a snapshot taken at construction
 
-- **Status:** Proposed (critic: ACCEPT WITH FIXES on the first draft; fixes 10a–10e applied)
+- **Status:** Accepted (2026-10-20, user at the ChuiTypes phase-4 ★). Critic: ACCEPT WITH FIXES
+  on the first draft; fixes 10a–10e applied.
 - **Date:** 2026-10-20
 - **Deciders:** the user at the ChuiTypes phase-4 ★ (via the lead). The adapter's own rules
   belong to ChuiFrames (ecosystem ADR-0002 §1) and go there through request R10.

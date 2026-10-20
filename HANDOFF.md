@@ -10,7 +10,7 @@ every checkpoint. Keep it short; history lives in git and in ADRs.
 - **Remote:** none pushed from this lane.
 - **Phase:** **phase 4 (futures and streams) is implemented** on the branch.
   - Spec: `docs/superpowers/specs/2026-10-20-phase4-streams-design.md` (critic: ACCEPT WITH
-    FIXES; fixes applied). ADR-0008 (**Proposed**): a bounded stream becomes a ChuiFrames Source
+    FIXES; fixes applied). ADR-0008 (**Accepted** at the phase-4 ★): a bounded stream becomes a ChuiFrames Source
     by a snapshot (`runchunks`).
   - `src/stream/`: `queue.jl` (Queue), `core.jl` (Stream, protocol, driver, sources, run
     functions, `withbatches`), `fused.jl` (transducer-fused element operators), `sequential.jl`
@@ -36,21 +36,25 @@ is kept in a `_PumpCtl` the coordinator discards, so an inner whose input failed
 close failed loses the close cause from the failure's `suppressed` list, as does a superseded
 `switchmap` inner's close failure (`src/stream/concurrent.jl`, `first(_forkpump(...))`).
 
-## Decisions waiting (for the lead / the user at the phase-4 ★)
+## Decisions taken (user at the phase-4 ★, 2026-10-20; all as recommended)
 
-1. **ADR-0008** (bounded stream → Source by snapshot): Proposed; accept or amend.
-2. **Names** (spec §1): every new export and public name.
-3. **ADR-0003 departures** (spec §6, §7): `interval`/`timer` are cold (ADR-0003 §5 lists timers
-   as hot); `Subject` waits on the runtime's `_park!` directly instead of `async` (needs an
-   ADR-0003 §5 amendment).
-4. **ADR-0004 and the transducer stand-ins** (spec §14): a minimal re-implementation of
-   ChuiCore's protocol in `Upstream`; within ADR-0004 §2 or not.
-5. **R10** stays open: ADR-0008 answers its stream questions; export tiers, CT IDs and the
-   `chui-types.md` "Stream as a Source" amendment (T3) are draft requests in the lane report.
+1. **ADR-0008** (bounded stream → Source by snapshot): **Accepted**.
+2. **Names** (spec §1): accepted as proposed.
+3. **ADR-0003 §5 amended** (dated): `interval`/`timer` are cold, a clock per run; `Subject` parks
+   directly on the runtime.
+4. **ADR-0004 §2 note** (dated): the `Upstream` transducer stand-ins are within the rule for now;
+   switching to ChuiCore 0.0.1 is phase-5 item 1.
+5. **`bracketstream`'s `Interrupted` exit** under a concurrent stop (a producer still running) is
+   confirmed as documented.
+6. **R10** stays open (ChuiFrames' Task shim); the lead files the draft requests (export tiers,
+   CT IDs, the `chui-types.md` "Stream as a Source" amendment, the reproducer fix) after merging.
 
-## Phase 5 (performance), first items
+## Phase 5, in order
 
-1. **ADR-0003's "fused operators cost what an iterator does" is NOT met** (ADR-0003 "Measured
+1. **Switch `Upstream` to ChuiCore 0.0.1** (ADR-0004 §3, and the §2 note of 2026-10-20): the
+   typeclass and transducer stand-ins become `using ChuiCore: …`, instance methods get typed
+   styles (rule N5), contract tests start running.
+2. **ADR-0003's "fused operators cost what an iterator does" is NOT met** (ADR-0003 "Measured
    2026-10-20"; `.lanes/evidence/bench-streams-bd8bcc0.txt`, loaded machine): fused map/filter
    collect about 5.5× Base, `runfold` about 43× `foldl`, about 24 allocations / 15 KB per
    1024-element chunk. Suspected causes, **UNVERIFIED** (not profiled): the untyped `runfold`
@@ -68,4 +72,5 @@ close failed loses the close cause from the failure's `suppressed` list, as does
 
 ## Next action
 
-The lead's review and merge, then the phase-4 ★. Then phase 5 (performance, item 1 above).
+The lead's merge (the phase-4 ★ is answered, above). Then phase 5, in the order above: the
+ChuiCore 0.0.1 switch-over first, then the stream cost work.
