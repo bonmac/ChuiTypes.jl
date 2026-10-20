@@ -5,63 +5,70 @@ every checkpoint. Keep it short; history lives in git and in ADRs.
 
 ## State
 
-- **Branch:** `feat/phase2-datatypes`, cut from `main` at `455c085` (phase 1 accepted and
-  merged). It is **not merged**: it waits for the lead's review and merge.
+- **Branch:** `feat/phase3-effects`, cut from `main` at `dc1882c` (phases 1 and 2 merged). It is
+  **not merged**: it waits for the lead's review and merge.
 - **Remote:** none pushed from this lane.
-- **Phase:** **phase 2 (core data types, plus laws) is implemented** on the branch.
-  - Spec: `docs/superpowers/specs/2026-10-20-phase2-datatypes-design.md` (decisions the ADRs
-    leave open). Plan: `docs/superpowers/plans/2026-10-20-phase2-datatypes.md`.
-  - Types (ADR-0001): `Option`, `Either`, `Validation`, `These`, `NonEmpty`, `LazyList`, one
-    file each in `src/`.
-  - `src/upstream.jl`: the `ChuiTypes.Upstream` stand-ins (ADR-0004), mirroring ChuiCore
-    ADR-0001 (`combine(m, a, b)`, fresh `neutral(m)`, `pure(tag, x)`). Not exported, not public.
-  - Law kits in `test/laws/kits.jl` (`@check record=false db=false` plus `@test`), law tests for
-    every ADR-0001 §10 instance, one planted violation per law (runs on 1.10).
-  - `benchmark/`: a `SUITE` for the four zero-allocation chains of ADR-0001 §11.
-- **Dependencies:** `Compat = "4.10"` (for `@compat public`, ADR-0005 §1). ChuiCore is still
-  unreleased and is not a dependency. Test-only: Supposition `0.3`, plus the stdlibs the CT-003
-  test loads.
-- **Unchanged:** the L0 defaults (`0.0.1`, `julia = "1.10"`, TestItemRunner plus Runic, MIT);
-  the lane cap of 6; `:contract` items run only in `test/contracts/`; `USED.md` lists no ChuiCore
-  IDs (nothing from ChuiCore is used yet).
-- **Evidence files:** `.lanes/evidence/` (gitignored), keyed to the lane's commits; the lead's
+- **Phase:** **phase 3 (Reader/Writer/State, the effect runtime, its adapters) is implemented**
+  on the branch.
+  - Spec: `docs/superpowers/specs/2026-10-20-phase3-effects-design.md` (decisions ADRs 0002,
+    0006 and 0007 leave open, and the proposed names, §1). Plan:
+    `docs/superpowers/plans/2026-10-20-phase3-effects.md`.
+  - ADR-0007 (**Proposed**): Reader/Writer/State are erased node trees with one declared
+    parameter (`Reader{R}`, `Writer{W}`, `State{S}`), run by an explicit-stack interpreter.
+    Measured (`rws-*`, `rwsdeep-*` evidence), critiqued (critic: ACCEPT WITH FIXES; fixes applied).
+  - `src/rws.jl`, `reader.jl`, `writer.jl`, `state.jl` (sub-lane `rws`, copied in as commit
+    `267bc6c`); `src/effect/` (types, context, interpreter, fiber, api, clock, combinators,
+    schedule, adapters).
+  - Tests: unit (`test_effect.jl`, `test_reader/writer/state.jl`), laws (`test/laws/
+    test_laws_effect.jl`, `test_laws_rws.jl`), properties with planted violations
+    (`test_effect_props.jl`), leak stress (`test_effect_stress.jl`, `:slow`).
+- **Dependencies:** `Compat = "4.10"`, **`ScopedValues = "1.6"` (new, ADR-0005)**. ChuiCore is
+  still unreleased and is not a dependency.
+- **Not built (phase 4 or later):** streams, `Queue`, `fromchannel`/`tochannel`, futures,
+  semaphores, `jittered` schedules (needs a random source; `Random` is not a dependency).
+- **Evidence files:** `.lanes/evidence/` (gitignored), keyed to the lane's commits; the lane's
   report lists the commands and counts.
 
 ## Open lanes
 
 | Lane | Agent | File scope | Status | Report |
 |---|---|---|---|---|
-| `phase2-datatypes` | types-p2 (lead-dispatched) | `src/**`, `ext/**`, `test/**`, `Project.toml`, `docs/**`, `benchmark/**`, `HANDOFF.md`, `changelog.d/phase2-datatypes.md`; plus `.gitignore` (authorised by the lead, 2026-10-20: `SuppositionDB/`) | implemented, reviewed; ADR-0001 §4 amended on the ★ answer relayed by the lead; waiting for the lead's confirmation and merge | SendMessage to the lead, 2026-10-20 |
+| `phase3-effects` | types-p3 (lead-dispatched) | `src/**`, `ext/**`, `test/**`, `Project.toml`, `docs/**`, `benchmark/**`, `HANDOFF.md`, `changelog.d/phase3-effects.md`, `.gitignore` | implemented; reviewer FINAL ACCEPT at `37ec1ad`; waiting for the lead's merge | SendMessage to the lead, 2026-10-20 |
 
-## Answered
+Follow-ups the reviewer left as NITs (not fixed on this branch): `_race`/`_zippar` should `_stop!`
+their children in a `try/finally`, so a ^C escaping a masked wait cannot strand them (N-a); the
+stress test's test-mode section runs `runtest` in a non-sticky task, and should use a sticky one (N-b).
 
-- **★ decision 0, `LazyList` and ADR-0001 §4.** The lead relayed the user's answer (2026-10-20):
-  option (a). ADR-0001 §4 carries a dated amendment naming `LazyList` as the documented
-  exception (a lazily mapped list fixes its element type at `map` time, so a method added before
-  forcing can make forcing throw). The lane has no direct user message: the lead confirms the
-  decision against the user's own words before the merge.
-- **Stale `origin/main` (the lead's).** `scripts/_common.jl` `merge_base` prefers `origin/main`
-  (`db74452`), so `scripts/lane audit` fails on `changelog.d/phase1-research.md` (and on the
-  authorised `.gitignore`), and `dod.jl --base main` counts 84 files; `dod.jl --base 455c085`
-  gives the true diff. The lead fixes it with the next push.
+## Decisions waiting (for the lead / the user at the phase-3 ★)
 
-## Decisions waiting (for the lead)
-
-1. **`docs/CHECK_COVERAGE.md` row for the ChuiCore grep test** (ADR-0004 §1). The file is
-   generated from `.agents/checks.local.toml`, outside this lane's scope. Blind spots to list:
-   names built at run time (`getfield(Main, Symbol(...))`, `eval`), modules reached through
-   `Base.loaded_modules`.
-2. **Requests R1–R5** (ADR-0004 §7) are still to be filed by the coordinator. R1 now has
-   concrete proposals: `chain` (bind), `ap`, `alt`, `zeroalt(tag, T)`, `bimap`, tags that carry
-   the fixed parameters (`EitherTag{L}()`), and `default_monoid` for `These`.
+1. **ADR-0007** (Reader/Writer/State encoding): Proposed; accept or amend.
+2. **Names** (spec §1): every new export and public name. Notable choices: `andthen` as the
+   public bind (the `Upstream.chain` stand-in stays internal); `succeeded` (not `issuccess`,
+   which LinearAlgebra exports); `listening`/`withreader` (avoid `Sockets.listen` and the
+   `local` keyword); `getstate`/`putstate` (avoid `Base.get`).
+3. **Semantics to confirm:** a child failure fails its scope even when the parent awaited the
+   child (Kotlin semantics; `race`/`timeout`/`zippar` use unsupervised children). `timeout`'s
+   `none(A)` uses the advisory `A`. Inside a masked region, the hidden children of
+   `race`/`timeout`/`zippar`/`fromtask(f)` are detached from the fiber's cancellation (so they
+   work in releases); a user `fork` there is still cancelled with its scope.
+   **Test mode and foreign tasks:** virtual time is frozen while a `fromtask(t::Task)` runs, so
+   `timeout(fromtask(t), d)` never expires on a slow `t` under `runtest`; `advance!`/`runtest`
+   throw after the wall-clock timeout instead, and an abandoned `t` keeps test mode busy (this
+   changes how ADR-0013's orphan rule looks under `runtest`).
+4. Carried over: the `docs/CHECK_COVERAGE.md` row for the ChuiCore grep test, and requests R1–R5
+   (ADR-0004 §7), still with the coordinator.
 
 ## Checks NOT run, and why
 
 - Julia 1.14 (alpha) and 1.12: no runnable binaries locally.
 - `ci.jl contracts`: skips (waiting): `test/contracts/upstreams.toml` has no ChuiCore URL.
 - GitHub workflows: no remote from this lane.
+- Benchmarks were added to `benchmark/` but not run as a suite on an idle machine.
+- **Stale `origin/main` (the lead's).** `scripts/lane audit` and `dod.jl --base main` compare
+  against `origin/main` until the lead pushes; `dod.jl --base dc1882c` gives this branch's
+  true diff.
 
 ## Next action
 
-Once the lead merges this branch: phase 3 (Reader/Writer/State encoding ADR, the effect runtime,
-`sync(f)`), in a new lane. At ChuiCore's first snapshot: the switch-over of ADR-0004 §3.
+After the lead merges: phase 4 (futures and streams on `Queue`, `Scope`, the clock and test
+mode), in a new lane. At ChuiCore's first snapshot: the switch-over of ADR-0004 §3.

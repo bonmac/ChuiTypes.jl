@@ -29,6 +29,16 @@ an empty or left result.
     return i == 0 ? Any : R.parameters[i]
 end
 
+"""
+    andthen(k, m)
+
+Monadic bind for the phase-3 types (`Effect`, `Reader`, `Writer`, `State`): run `m`, pass its
+result to `k`, and continue with the value `k` returns, which must be the same kind of value
+as `m`. Stack-safe at any depth: binds are data, run by an explicit-stack interpreter.
+Same as the internal `Upstream.chain` stand-in (ADR-0004), which is not public.
+"""
+function andthen end
+
 # Constructor tags (spec §2). A tag fixes every parameter except the mapped-over one, so the
 # value-less operations (`pure`, `zeroalt`, `traverse`'s empty branch) are type-stable.
 

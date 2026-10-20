@@ -5,7 +5,9 @@ authors = ["Boniface Makone"]
 
 [deps]
 Compat = "34da2185-b29b-5c13-b0c7-acf172513d20"
+ScopedValues = "7e506255-f358-4e82-b7e4-beb19740aa63"
 
 [compat]
 Compat = "4.10"
+ScopedValues = "1.6"
 julia = "1.10"
