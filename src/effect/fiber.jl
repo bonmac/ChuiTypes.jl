@@ -144,6 +144,9 @@ function _spawn(node::_ENode, ::Type{E}, ::Type{A}, cs::_CancelState, env, rt, s
             _childfailed!(scope, something(x.c))
         end
         _complete!(f, x)
+        # A finished child leaves its scope at once, so long-lived scopes do not keep every Exit
+        # (reviewer B2). The scope's join only waits on children still in the set.
+        scope === nothing || @lock scope.lock delete!(scope.children, f)
         _detach!(cs)
         Threads.atomic_sub!(_LIVE, 1)
         if rt !== nothing

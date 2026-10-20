@@ -103,6 +103,10 @@ Cancelling it runs `canceller()` if one was given, then waits for `t`. Without a
 effect ends `Interrupted` at once and `t` is **abandoned**: it keeps running and is counted in
 [`ChuiTypes.orphans`](@ref). A started Base task cannot be stopped from outside.
 
+In test mode, virtual time does not move while `t` runs: the runtime waits for it in real time,
+so a `t` that never ends makes `advance!`/`runtest` time out. Outside work behind `async`, such as
+a real `Timer` callback, is not tracked: test mode may advance virtual time before it calls back.
+
 `fromtask(f)` runs `f()` in a new task as cooperative work under the effect's cancellation: inside
 it, [`checkcancel`](@ref), `run` and the runtime primitives see the fiber's cancel state and
 environment. Cancelling the effect cancels that work and waits for it.
@@ -113,6 +117,11 @@ function fromtask(t::Task; canceller = nothing)
             schedule(t)
         catch
         end
+        # In test mode the watcher counts as a live fiber: it never parks, so virtual time does
+        # not move until `t` has ended (deterministic; a `t` that never ends makes `advance!`
+        # time out, naming the watcher). Reviewer S1.
+        rt = ctx.rt
+        _rtlive!(rt, 1)
         watch = () -> begin
             x = try
                 Success(fetch(t))
@@ -120,15 +129,23 @@ function fromtask(t::Task; canceller = nothing)
                 Failure(_fromexception(ex))
             end
             cb(x)
+            if rt !== nothing
+                @lock rt.lock begin
+                    rt.live -= 1
+                    delete!(rt.tasks, current_task())
+                end
+            end
+            return nothing
         end
-        _spawnwork(watch, ctx.rt)
+        wt = _spawnwork(watch, rt)
+        rt === nothing || @lock rt.lock push!(rt.tasks, wt)
         return canceller
     end
     return _eff(Exception, Any, _ENode(_N_PRIM, ctx -> _async(ctx, register(ctx), nothing, true)))
 end
 
 function _fromthunk(ctx::_Ctx, f)
-    cs = _childcancel(ctx.cancel)
+    cs = _innercancel(ctx)
     sub = _Ctx(cs, ctx.env, 0, nothing, ctx.rt)
     rt = ctx.rt
     register = cb -> begin

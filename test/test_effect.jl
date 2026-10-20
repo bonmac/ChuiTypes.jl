@@ -466,3 +466,31 @@ end
     @test isfail(cause(x)) && failure(cause(x)) === err
     @test isinterrupted(cause(runexit(fromtask(totask(sync(() -> throw(Cancelled())))))))
 end
+
+@testitem "Effect: review regressions (scope children, masked combinators, test-mode tasks, ^C)" tags = [:unit] begin
+    using ChuiTypes
+    using ChuiTypes: _Ctx, _ENode, _N_PRIM, cause, isinterrupted
+    # B2: finished children leave their scope at once
+    nchildren = Effect{Union{}, Int}(_ENode(_N_PRIM, ctx -> (true, length(ctx.scope.children))))
+    loop(n) = n == 0 ? nchildren : andthen(_ -> loop(n - 1), timeout(succeed(n), 5))
+    @test run(loop(500)) == 0
+    @test run(andthen(_ -> nchildren, foldl((acc, i) -> andthen(_ -> map(_ -> nothing, andthen(await, fork(succeed(i)))), acc), 1:200; init = succeed(nothing)))) == 0
+    # B1: combinators inside a masked region are not reached by an outside cancel
+    for comb in (e -> timeout(e, 5), e -> map(first, zippar(e, succeed(1))), e -> fromtask(() -> run(e)))
+        hits = Threads.Atomic{Int}(0)
+        body = uninterruptible(andthen(_ -> comb(sync(() -> Threads.atomic_add!(hits, 1))), delay(0.1)))
+        f = start(body)
+        sleep(0.02)
+        interrupt!(f)
+        wait(f)
+        @test hits[] == 1
+        @test isinterrupted(cause(f.exit))    # the cancel takes effect after the masked region
+    end
+    # S1: test mode waits for a foreign task before moving virtual time
+    @test runtest(timeout(fromtask(@task (yield(); yield(); 42)), 1.0)) == some(42)
+    # ^C at the root: finalizers run, then the InterruptException is rethrown
+    hit = Ref(false)
+    e = ensuring(sync(() -> throw(InterruptException())), sync(() -> (hit[] = true)))
+    @test_throws InterruptException runexit(e)
+    @test hit[]
+end

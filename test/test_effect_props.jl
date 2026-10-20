@@ -12,6 +12,30 @@
     const MAX = 100
     passed(r) = Supposition.results(r).ispass
 
+    # ---- Bounded runtime --------------------------------------------------------------------------
+    # Supposition 0.3 has no time limit, and its shrinker re-runs a failing case many times. Each
+    # property gets a wall-clock budget: after it, every case throws `BudgetExceeded` at once, so
+    # the property fails loudly (and shrinks instantly) instead of running for hours. Every wait on
+    # a fiber is bounded too.
+    const BUDGET = 120.0
+    struct BudgetExceeded <: Exception
+        name::String
+    end
+    Base.showerror(io::IO, b::BudgetExceeded) = print(io, "property `", b.name, "` exceeded its ", BUDGET, " s budget")
+    function budgeted(name, case)
+        deadline = time() + BUDGET
+        return (args...) -> (time() > deadline && throw(BudgetExceeded(name)); case(args...))
+    end
+    "Wait for fiber `f` to end, or throw after `secs` seconds (a hang fails the case)."
+    function waitfor(f::Fiber; secs = 20.0)
+        t0 = time()
+        while f.exit === nothing
+            time() - t0 > secs && error("fiber did not end within $secs s")
+            sleep(0.0005)
+        end
+        return f
+    end
+
     # ---- P1: finalizers run exactly once, LIFO, under self-cancellation at a random step ----------
     # `n` nested brackets; each level's use runs `steps` sync steps before the next level. Step
     # number `killat` interrupts the fiber itself (test mode: the fiber does not run before
@@ -31,7 +55,7 @@
         vc = VirtualClock()
         f = start(build(1); clock = vc)
         self[] = f
-        wait(f)
+        waitfor(f)
         acq = [i for (k, i) in log if k === :acq]
         rel = [i for (k, i) in log if k === :rel]
         total = (n + 1) * steps
@@ -39,9 +63,10 @@
         return rel == reverse(acq) && allunique(rel) && ended_ok
     end
     function prop_finalizers(bracketfn = bracket)
+        case = budgeted("finalizers", finalizer_case)
         r = @check record = false db = false max_examples = MAX (
             n = Data.Integers(1, 5), steps = Data.Integers(0, 3), killat = Data.Integers(1, 25),
-        ) -> finalizer_case(bracketfn, n, steps, killat)
+        ) -> case(bracketfn, n, steps, killat)
         return passed(r)
     end
 
@@ -57,34 +82,45 @@
         f = start(build(1))
         sleep(micros / 1.0e6)
         interrupt!(f)
-        wait(f)
+        waitfor(f)
         acq, rel = @lock lk ([i for (k, i) in log if k === :acq], [i for (k, i) in log if k === :rel])
         return rel == reverse(acq) && allunique(rel)
     end
     function prop_realcancel(bracketfn = bracket)
+        case = budgeted("realcancel", realcancel_case)
         r = @check record = false db = false max_examples = 40 (
             n = Data.Integers(1, 4), micros = Data.Integers(0, 4000),
-        ) -> realcancel_case(bracketfn, n, micros)
+        ) -> case(bracketfn, n, micros)
         return passed(r)
     end
 
-    # ---- P3: a scope leaves no live fiber, whatever its children do --------------------------------
-    # A random set of children (virtual delays, some failing) under a scope; after the run,
-    # `livefibers()` is back where it started.
+    # ---- P3: scopes supervise and leave no live fiber ---------------------------------------------
+    # A random set of children (virtual delays, at most one failing) under a scope. The scope fails
+    # with the child's cause iff a child fails; then every sibling that had not finished was
+    # cancelled (none finished normally); and the run's own clock counts no live or parked fiber.
+    # (The process-wide `livefibers()` is not used here: fibers other test items leave running end
+    # at unpredictable times, which made this property flaky and its shrinking endless.)
     function scope_case(forkfn, ds, failat)
-        before = livefibers()
-        child(i, d) = andthen(_ -> i == failat ? fail(:child) : succeed(i), delay(d))
+        vc = VirtualClock()
+        seen = Dict{Int, Symbol}()
+        fin(i) = (_, x) -> sync(() -> (seen[i] = succeeded(x) ? :ok : :stopped; nothing))
+        child(i, d) = bracket(succeed(i), _ -> andthen(_ -> i == failat ? fail(:child) : succeed(i), delay(d)), fin(i))
         body = foldl((acc, (i, d)) -> andthen(_ -> map(_ -> nothing, forkfn(child(i, d))), acc), enumerate(ds); init = succeed(nothing))
-        try
-            runtest(scope(body))
-        catch
-        end
-        return livefibers() == before
+        x = runtest(map(_ -> :done, scope(body)) |> e -> catchfail(err -> succeed(err), e); clock = vc)
+        clean = vc.live == 0 && vc.parked == 0
+        fails = 1 <= failat <= length(ds)
+        fails || return x === :done && clean
+        dfail = ds[failat]
+        later = [i for (i, d) in enumerate(ds) if d > dfail]   # still running when the child failed
+        # a later sibling was stopped (its release saw a failure) or never acquired (forked into a
+        # scope already cancelled): it never finished normally
+        return x === :child && all(i -> get(seen, i, :none) !== :ok, later) && clean
     end
     function prop_scopes(forkfn = fork)
+        case = budgeted("scopes", scope_case)
         r = @check record = false db = false max_examples = MAX (
             ds = Data.Vectors(Data.Integers(0, 5); min_size = 0, max_size = 6), failat = Data.Integers(0, 6),
-        ) -> scope_case(forkfn, ds, failat)
+        ) -> case(forkfn, ds, failat)
         return passed(r)
     end
 
@@ -99,15 +135,60 @@
             ex = Boom(n)
             x = runexit(fromtaskfn(totask(die(ex))))
             return ChuiTypes.isfail(cause(x)) && failure(cause(x)) === ex
-        else
+        elseif kind == 2
             x = runexit(fromtaskfn(totask(sync(() -> throw(Cancelled())))))
             return isinterrupted(cause(x))
+        else
+            # cancelling the adapter: ends Interrupted at once and counts the abandoned task
+            # `t` is scheduled by the adapter's register step, which then parks at once; waiting
+            # for `t` to start removes the race of interrupting before the adapter runs.
+            gate, started = Base.Event(), Base.Event()
+            t = @task (notify(started); wait(gate); n)
+            o = ChuiTypes.orphans()
+            f = start(fromtaskfn(t))
+            wait(started)
+            sleep(0.01)
+            interrupt!(f)
+            waitfor(f)
+            ok = isinterrupted(cause(f.exit)) && ChuiTypes.orphans() == o + 1
+            notify(gate)
+            return ok && fetch(t) == n
         end
     end
     function prop_roundtrip(fromtaskfn = fromtask)
+        case = budgeted("roundtrip", roundtrip_case)
         r = @check record = false db = false max_examples = MAX (
-            kind = Data.Integers(0, 2), n = Data.Integers(-50, 50),
-        ) -> roundtrip_case(fromtaskfn, kind, n)
+            kind = Data.Integers(0, 3), n = Data.Integers(-50, 50),
+        ) -> case(fromtaskfn, kind, n)
+        return passed(r)
+    end
+
+    # ---- P5: a release built from a combinator still runs under cancellation (masking) -------------
+    # A bracket whose release is `comb(step)`, killed at a random step of its use (test mode,
+    # self-interruption as in P1): the release's inner step must run exactly once.
+    function maskedrelease_case(comb, steps, killat)
+        hits = Ref(0)
+        self = Ref{Any}(nothing)
+        counter = Ref(0)
+        step = sync(() -> (counter[] += 1; counter[] == killat && interrupt!(self[]); nothing))
+        chain(k) = k == 0 ? succeed(nothing) : andthen(_ -> chain(k - 1), step)
+        rel = (_, _) -> comb(sync(() -> (hits[] += 1; nothing)))
+        f = start(bracket(succeed(1), _ -> chain(steps), rel); clock = VirtualClock())
+        self[] = f
+        waitfor(f)
+        return hits[] == 1
+    end
+    const COMBS = Function[
+        e -> timeout(e, 5),
+        e -> map(first, zippar(e, succeed(1))),
+        e -> race(e, delay(10)),
+        e -> fromtask(() -> run(e)),
+    ]
+    function prop_maskedrelease(combs = COMBS)
+        case = budgeted("maskedrelease", maskedrelease_case)
+        r = @check record = false db = false max_examples = MAX (
+            c = Data.Integers(1, length(combs)), steps = Data.Integers(1, 4), killat = Data.Integers(1, 5),
+        ) -> case(combs[c], steps, killat)
         return passed(r)
     end
 end
@@ -120,7 +201,11 @@ end
     @test EffectProps.prop_realcancel()
 end
 
-@testitem "property: scopes leave no live fiber" tags = [:property] setup = [EffectProps] begin
+@testitem "property: a release built from a combinator runs under cancellation" tags = [:property] setup = [EffectProps] begin
+    @test EffectProps.prop_maskedrelease()
+end
+
+@testitem "property: scopes supervise and leave no live fiber" tags = [:property] setup = [EffectProps] begin
     @test EffectProps.prop_scopes()
 end
 
@@ -135,12 +220,23 @@ end
     leaky_bracket(acq, use, rel) = andthen(a -> andthen(r -> map(_ -> r, rel(a, Success(r))), use(a)), acq)
     @test !EffectProps.prop_finalizers(leaky_bracket)
     @test !EffectProps.prop_realcancel(leaky_bracket)
-    # a fork that escapes the scope (a root fiber nobody waits for)
-    escaping_fork(e) = sync(() -> start(andthen(_ -> e, delay(0.05))))
+    # a fork that escapes the scope: a root fiber on the same virtual clock that nobody waits for
+    # (it outlives the run, so the clock still counts it); the escapes are interrupted afterwards
+    escaped = Fiber[]
+    escaping_fork(e) = andthen(
+        c -> sync(() -> (f = start(andthen(_ -> e, delay(10)); clock = c); push!(escaped, f); f)),
+        service(ChuiTypes.AbstractClock),
+    )
     @test !EffectProps.prop_scopes(escaping_fork)
-    # an adapter that keeps Base's wrapper instead of the original exception
+    foreach(interrupt!, escaped)
+    foreach(f -> EffectProps.waitfor(f), escaped)
+    # a fork whose failure never reaches the scope (no supervision)
+    unsupervised_fork(e) = fork(catchfail(_ -> succeed(nothing), e))
+    @test !EffectProps.prop_scopes(unsupervised_fork)
+    # an adapter that keeps Base's wrapper instead of the original exception (its canceller ends
+    # it, so a cancelled run cannot hang the planted test)
     wrapping_fromtask(t) = async(
-        cb -> (
+        cb -> begin
             Threads.@spawn(
                 cb(
                     try
@@ -149,8 +245,12 @@ end
                         Failure(Fail(ex))
                     end
                 )
-            ); nothing
-        )
+            )
+            () -> cb(Failure(ChuiTypes.Interrupted()))
+        end
     )
     @test !EffectProps.prop_roundtrip(wrapping_fromtask)
+    # a combinator whose hidden child inherits the masked fiber's cancel state (reviewer B1)
+    inheriting(e) = andthen(f -> andthen(ChuiTypes.fromexit, await(f)), fork(e))
+    @test !EffectProps.prop_maskedrelease(Function[inheriting])
 end

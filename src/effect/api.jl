@@ -162,8 +162,16 @@ run and every fiber body is already a scope; `scope` makes a narrower one.
 """
 scope(e::Effect{E, A}) where {E, A} = _eff(E, A, _ENode(_N_SCOPE, e.node))
 
-_forkin(ctx::_Ctx, e::Effect{E, A}, supervised::Bool) where {E, A} =
-    _spawn(e.node, E, A, _childcancel(ctx.cancel), ctx.env, ctx.rt, ctx.scope, supervised)
+# The cancel state of a combinator's internal child (race, timeout, zippar, fromtask(f)). In a
+# masked region it is detached from the fiber's, so an outside cancel cannot reach the child
+# while the region is masked (ADR-0002 §4): the combinator stops its children itself. A user
+# `fork` stays a child of the scope's cancel state even when masked, so its scope can stop it.
+_innercancel(ctx::_Ctx) = _interruptible(ctx) ? _childcancel(ctx.cancel) : _CancelState()
+
+_forkin(ctx::_Ctx, e::Effect{E, A}, supervised::Bool) where {E, A} = _spawn(
+    e.node, E, A, supervised ? _childcancel(ctx.cancel) : _innercancel(ctx),
+    ctx.env, ctx.rt, ctx.scope, supervised,
+)
 
 """
     fork(eff) -> Effect{Union{},Fiber}
@@ -173,6 +181,9 @@ Start `eff` in a new fiber that belongs to the enclosing [`scope`](@ref) and suc
 with its scope. In test mode it is a sticky task on the caller's thread.
 
 A scope waits for its children: `fork(forever)` without an `interrupt!` keeps the parent alive.
+A fiber forked inside a masked region ([`uninterruptible`](@ref)) is still cancelled with its
+scope and its fiber; the hidden children of `race`, `timeout`, `zippar` and `fromtask(f)` in a
+masked region are not, so those combinators finish when used in a release.
 """
 fork(e::Effect{E, A}) where {E, A} = _eff(Union{}, Fiber{E, A}, _ENode(_N_PRIM, ctx -> (true, _forkin(ctx, e, true))))
 
@@ -268,8 +279,9 @@ end
     acquirerelease(acquire, release)
 
 Run `acquire` masked and succeed with its value `a`; `release(a, exit)` (an effect) runs masked
-when the enclosing [`scope`](@ref) ends, with the scope's [`Exit`](@ref). Releases registered in
-one scope run LIFO.
+when the enclosing [`scope`](@ref) ends, with the scope's [`Exit`](@ref) as earlier releases
+left it (a failing release turns a success into that failure for the releases after it).
+Releases registered in one scope run LIFO.
 """
 acquirerelease(acquire::Effect{E, A}, release) where {E, A} =
     _eff(E, A, _ENode(_N_ACQREL, acquire.node, release))

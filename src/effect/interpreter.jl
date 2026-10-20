@@ -227,7 +227,10 @@ function _interpret(node::_ENode, ctx0::_Ctx)
                 rel = fr.a
                 s = ctx.scope
                 if s === nothing
-                    cause = Die(ErrorException("acquirerelease outside a scope"))
+                    # Unreachable (every run and fiber body is a scope); release at once rather
+                    # than drop the resource (reviewer S3).
+                    push!(stack, _Frame(_F_FIN, x -> rel(a, x)))
+                    cause = Die(ErrorException("ChuiTypes: acquirerelease outside a scope"))
                     mode = _MODE_FAIL
                 else
                     @lock s.lock push!(s.finalizers, x -> rel(a, x))

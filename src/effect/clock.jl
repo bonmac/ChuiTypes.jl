@@ -66,7 +66,10 @@ function _quiesce(c::VirtualClock, timeout::Float64)
     while true
         yield()
         if _quiet(c)
-            yield()             # a fiber woken by the last one may only now be runnable
+            # A heuristic second look: a fiber woken by the last one may only now be runnable.
+            # Wakers uncount a parked fiber at once, so this guards only against a scheduler
+            # that has not yet run a just-scheduled task; it is not a proof of quiescence.
+            yield()
             _quiet(c) && return nothing
         end
         if time() - t0 > timeout
@@ -151,10 +154,12 @@ function runtest(e::Effect; clock::VirtualClock = VirtualClock(), timeout::Real 
             _quiet(clock) || continue
             # Best effort: interrupt the root so its finalizers run and its fibers end (a
             # masked wait that nothing completes still stays parked).
+            # The cleanup gets its own bound: the caller's `timeout` may be short.
             interrupt!(f)
-            try
-                _quiesce(clock, to)
-            catch
+            t1 = time()
+            while !_isdone(f) && time() - t1 < max(to, 10.0)
+                yield()
+                _quiet(clock) && sleep(0.001)
             end
             error("runtest: deadlock: the root fiber is not done, every fiber is parked and no timer is due (at time $(_now(clock))); the root was interrupted")
         end
