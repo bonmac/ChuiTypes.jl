@@ -73,3 +73,11 @@ end
         @test allocs(run, left("x", Int)) == 0
     end
 end
+
+@testitem "Either/These: chain keeps the fixed parameter (review NIT-1)" tags = [:unit] begin
+    using ChuiTypes
+    using ChuiTypes: both, that
+    const U = ChuiTypes.Upstream
+    @test_throws TypeError U.chain(x -> right(Int, x), right(String, 1))
+    @test_throws TypeError U.chain(x -> that(String, x), that(Int, 1))
+end

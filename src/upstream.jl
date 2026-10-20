@@ -6,8 +6,8 @@ name ChuiCore; a `:quality` test enforces it.
 
 ChuiCore has no registered snapshot yet, so every function below is a local **stand-in**: an
 empty generic function that the type files extend with `Upstream.f(...) = ...`. When a ChuiCore
-snapshot provides the same name and signature, the stand-in becomes `using ChuiCore: f` (or
-`const f = ChuiCore.g` for a rename) in this file only (ADR-0004 §3).
+snapshot provides the same name and signature, each stand-in becomes a `using` of ChuiCore's
+binding (or a `const` alias of it, for a rename) in this file only (ADR-0004 §3).
 
 Names and conventions mirror ChuiCore ADR-0001 (accepted): Semigroup/Monoid are instance values
 (`combine(m, a, b)`, `neutral(m)` fresh on every call); constructor classes are keyed on an owned

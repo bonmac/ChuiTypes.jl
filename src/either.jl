@@ -100,7 +100,7 @@ end
 
 # Monad
 function Upstream.chain(f, e::Either{L, R}) where {L, R}
-    isright(e) && return f(_getr(e))::Either
+    isright(e) && return f(_getr(e))::Either{L}
     return _left(L, _param(Either, Base.promote_op(f, R), 2), _getl(e))
 end
 

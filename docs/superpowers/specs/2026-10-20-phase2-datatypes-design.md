@@ -67,10 +67,29 @@ parameters: `none(Int) == none(String)`, as `Int[] == String[]` in Base.
 ## 6. `LazyList`
 
 `lazynil(T)`, `lazycons(x, rest)` (`rest` a `LazyList` or a zero-argument function returning
-one) and `lazylist(itr)` (lazy over any iterator, consumed once). Cells are memoised and forcing
-is not thread-safe (ADR-0001 §7). `map`/`chain` fix the result element type from `promote_op` when
-called: a method added between `map` and forcing that changes `f`'s return type can make forcing
-throw a conversion error. This is the inference-dependent parameter of ADR-0001 §4, documented.
+one; the head is converted to `T` when the list is built) and `lazylist(itr)` (lazy over any
+iterator, consumed once). Cells are memoised and forcing is not thread-safe (ADR-0001 §7). A cell
+that forces itself throws an `ArgumentError`; a thunk that throws leaves its cell unforced.
+
+**Deviation from ADR-0001 §4, needs a ★ decision.** `map`/`chain`/`ap` fix the result element
+type from `promote_op` when they are called, and later store computed values in cells of that
+type. A method added between `map` and forcing that changes `f`'s return type therefore makes
+forcing throw (`g(x) = 1; l = map(g, lazylist(1:3)); @eval g(x) = 1.5; collect(l)` gives an
+`InexactError`). ADR-0001 §4 says a stale inferred parameter costs precision, "never
+correctness". Every other type here stores values computed eagerly, so only `LazyList` is
+affected. The two ways out are an ADR-0001 amendment naming `LazyList` as the exception (the
+lane's recommendation: it is a corner case of world-age changes during a lazy computation,
+documented in the docstring), or element type `Any` for lazily mapped lists, which gives up type
+stability on iteration.
+
+## 6a. Element types never convert values
+
+`NonEmpty`'s `map`, `chain` and `traverse` pick the element type by `typejoin` (Base's `map`
+widens the same way), never by `promote_type`: `map(x -> x == 1 ? 1 : 2.5, nonempty(1, 2))`
+keeps the `Int` 1 and has element type `Real`. Only the constructor `nonempty(x, xs...)` and
+`NonEmptySemigroup` promote, like the array literal and `vcat`. `Validation`'s `bimap` takes the
+new error type from `promote_op(f, E)` on both branches. `Either`/`These` `chain` require the
+continuation to keep the fixed parameter (`::Either{L}`, `::These{A}`).
 
 ## 7. `Validation` show
 

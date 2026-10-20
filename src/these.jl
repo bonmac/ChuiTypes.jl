@@ -111,7 +111,7 @@ end
 
 function Upstream.chain(f, t::These{A, B}) where {A, B}
     isthis(t) && return _this(A, _param(These, Base.promote_op(f, B), 2), _geta(t))
-    r = f(_getb(t))::These
+    r = f(_getb(t))::These{A}
     isthat(t) && return r
     return _chain_both(A, _geta(t), r)
 end

@@ -90,10 +90,15 @@ function Upstream.ap(ff::Validation{E, F}, fx::Validation{E, T}) where {E, F, T}
     return _invalid(vcat(_errs(ff), _errs(fx)), S)
 end
 
-# Bifunctor: `f` over each error, `g` over the value
+# Bifunctor: `f` over each error, `g` over the value. Both branches take the new error type
+# from `promote_op(f, E)` (ADR-0001 §4), so they agree; the error vector keeps the actual
+# results' eltype only when inference is stale (never asserted, never converted).
 function Upstream.bimap(f, g, v::Validation{E, A}) where {E, A}
-    isvalid(v) && return valid(g(_geta(v)), Base.promote_op(f, E))
-    return _invalid(map(f, _errs(v)), Base.promote_op(g, A))
+    E2 = Base.promote_op(f, E)
+    isvalid(v) && return valid(g(_geta(v)), E2)
+    out = map(f, _errs(v))
+    errs = eltype(out) <: E2 ? convert(Vector{E2}, out) : out
+    return _invalid(errs, Base.promote_op(g, A))
 end
 
 # Traversable

@@ -71,3 +71,23 @@ end
     collect(Iterators.take(m, 2))
     @test startswith(repr(m), "LazyList{Int64}([1, 2")
 end
+
+@testitem "LazyList: lazycons checks the head type when built (review SF-5)" tags = [:unit] begin
+    using ChuiTypes
+    @test_throws MethodError lazycons(nothing, lazynil(Int))
+    @test lazycons(1, lazynil(Float64)) isa LazyList{Float64}
+    @test first(lazycons(1, lazynil(Float64))) === 1.0
+end
+
+@testitem "LazyList: a cell that forces itself throws ArgumentError (review SF-6)" tags = [:unit] begin
+    using ChuiTypes
+    const C = ChuiTypes
+    local selfref
+    selfref = C._lazy(Int, () -> C._uncons(selfref))
+    @test_throws ArgumentError first(selfref)
+    # a failing thunk leaves the cell unforced, so forcing again retries
+    tries = Ref(0)
+    flaky = C._lazy(Int, () -> (tries[] += 1; tries[] == 1 ? error("first") : nothing))
+    @test_throws ErrorException isempty(flaky)
+    @test isempty(flaky) && tries[] == 2
+end

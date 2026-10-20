@@ -5,7 +5,9 @@
 
 A sequence of at least one `T`, built with `nonempty(x, xs...)`. Stored as `head::T` and
 `tail::Vector{T}`, so it is concrete (ADR-0001, SUM-11). Treat it as immutable: no operation
-mutates a `NonEmpty`'s vector, and every operation that builds one copies.
+mutates a `NonEmpty`'s vector, and every operation that builds one copies. `map` and the other
+operations never convert element values: their element type is the `typejoin` of the results'
+types, as for Base's `map` (only the constructor promotes, like `[x, xs...]`).
 
 Base integration: `iterate`, `length`, `first`, `last`, `getindex`, `map`, `foldl`/`foldr`,
 `reduce` without `init` (never empty), `==`, `isequal`, `hash`, `show`.
@@ -33,6 +35,7 @@ Base.length(ne::NonEmpty) = 1 + length(ne.tail)
 Base.eltype(::Type{NonEmpty{T}}) where {T} = T
 Base.firstindex(::NonEmpty) = 1
 Base.lastindex(ne::NonEmpty) = length(ne)
+Base.getindex(::NonEmpty, i::Bool) = throw(ArgumentError("invalid index: $i of type Bool"))
 function Base.getindex(ne::NonEmpty, i::Integer)
     i == 1 && return ne.head
     checkbounds(Bool, ne.tail, i - 1) || throw(BoundsError(ne, i))
@@ -45,26 +48,28 @@ function Base.iterate(ne::NonEmpty, i::Int = 1)
 end
 Base.Iterators.reverse(ne::NonEmpty) = Base.Iterators.reverse(collect(ne))
 
-# Build a NonEmpty{U} from a head and a tail whose element types may differ from U.
+# Build a NonEmpty{U} from a head and a tail whose elements are all `<: U`. `U` is always a
+# `typejoin` of the element types, so the `convert`s below never change a value.
 _ne(::Type{U}, head, tail) where {U} = NonEmpty{U}(_NEW, head, convert(Vector{U}, tail))
 
-# Functor. The element type is the promotion of the head's result and `map`'s eltype for the
-# tail; for an empty tail that eltype comes from inference (ADR-0001 §4), never asserted.
+# Functor. The element type is the `typejoin` (never `promote_type`: values are not converted)
+# of the head's result type and `map`'s eltype for the tail; for an empty tail that eltype comes
+# from inference (ADR-0001 §4), never asserted.
 function Base.map(f, ne::NonEmpty)
     h = f(ne.head)
     t = map(f, ne.tail)
-    return _ne(promote_type(typeof(h), eltype(t)), h, t)
+    return _ne(typejoin(typeof(h), eltype(t)), h, t)
 end
 Upstream.fmap(f, ne::NonEmpty) = map(f, ne)
 
 _neparam(::Type{NonEmpty{T}}) where {T} = T
 _neparam(::Type) = Any
 
-# Monad: concatenation of the results
+# Monad: concatenation of the results (element type by `typejoin`, as for `map`)
 function Upstream.chain(f, ne::NonEmpty)
     r = f(ne.head)::NonEmpty
     parts = map(f, ne.tail)
-    U = promote_type(eltype(r), _neparam(eltype(parts)))
+    U = typejoin(eltype(r), _neparam(eltype(parts)))
     out = Vector{U}(r.tail)
     for p in parts
         p::NonEmpty
@@ -78,15 +83,30 @@ end
 Upstream.pure(::NonEmptyTag, x) = nonempty(x)
 Upstream.ap(fs::NonEmpty, xs::NonEmpty) = Upstream.chain(f -> map(f, xs), fs)
 
-# Traversable: left to right, through the target applicative's `fmap` and `ap`.
-_snoc(ne::NonEmpty{S}, y) where {S} =
-    (U = promote_type(S, typeof(y)); NonEmpty{U}(_NEW, ne.head, push!(Vector{U}(ne.tail), y)))
-function Upstream.traverse(tag, f, ne::NonEmpty)
-    acc = Upstream.fmap(nonempty, f(ne.head))
-    for x in ne.tail
-        acc = Upstream.ap(Upstream.fmap(n -> (y -> _snoc(n, y)), acc), f(x))
+# Traversable: left to right, through the target applicative's `fmap` and `ap`. The results
+# are collected in an immutable reversed list (shared safely when the target applicative runs a
+# function more than once), so the traversal is linear; the vector is built once at the end.
+struct _RevNode
+    v::Any
+    next::Union{Nothing, _RevNode}
+end
+function _ne_from_rev(n::_RevNode)
+    xs = Any[]
+    while true
+        push!(xs, n.v)
+        next = n.next
+        next === nothing && break
+        n = next
     end
-    return acc
+    v = [x for x in Iterators.reverse(xs)]   # Base's widening: the tightest element type
+    return NonEmpty{eltype(v)}(_NEW, v[1], v[2:end])
+end
+function Upstream.traverse(tag, f, ne::NonEmpty)
+    acc = Upstream.fmap(y -> _RevNode(y, nothing), f(ne.head))
+    for x in ne.tail
+        acc = Upstream.ap(Upstream.fmap(n -> (y -> _RevNode(y, n)), acc), f(x))
+    end
+    return Upstream.fmap(_ne_from_rev, acc)
 end
 
 Upstream.constructorclass(::Type{<:NonEmpty}) = NonEmptyTag()

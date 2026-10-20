@@ -4,6 +4,7 @@
 const _UNFORCED = 0x00
 const _EMPTY = 0x01
 const _CONS = 0x02
+const _FORCING = 0x03
 
 # A cell is forced at most once. `thunk` is a zero-argument callable returning `nothing` (the
 # list ends) or a tuple `(head, rest::LazyList{T})`; it is dropped after forcing.
@@ -29,6 +30,12 @@ computed until a cell is forced (by iteration), and each cell is forced once.
 - `length`, `==`, `isequal`, `hash` and `foldl` force the whole list (they do not return on an
   infinite list). `Base.IteratorSize` is `SizeUnknown`, so `Iterators.take` works on infinite
   lists.
+- Forcing a cell runs the thunks of the lists it was built from, recursively: a list built by
+  very deeply nested `map`s or left-nested `alt`s (around 10^5 levels) overflows the stack on
+  its first force. Runs of empty results in `chain` are skipped in a loop, not by recursion.
+- A cell whose thunk forces that same cell (a list defined in terms of itself without a delay)
+  throws an `ArgumentError`. A thunk that throws leaves its cell unforced, so forcing again
+  retries.
 """
 struct LazyList{T}
     cell::_LazyCell{T}
@@ -50,7 +57,7 @@ The list with head `x` followed by `rest`. `rest` is a `LazyList{T}` (the result
 `LazyList{T}`), or a zero-argument function returning a `LazyList{typeof(x)}`, called only when
 the tail is first needed (so a list can refer to itself: `ones = lazycons(1, () -> ones)`).
 """
-lazycons(x, rest::LazyList{T}) where {T} = LazyList{T}(_LazyCell{T}(_CONS, x, rest.cell, nothing))
+lazycons(x, rest::LazyList{T}) where {T} = LazyList{T}(_LazyCell{T}(_CONS, convert(T, x), rest.cell, nothing))
 function lazycons(x, rest)
     T = typeof(x)
     return LazyList{T}(_LazyCell{T}(_CONS, x, _lazy(T, () -> _uncons(rest()::LazyList{T})).cell, nothing))
@@ -70,15 +77,23 @@ function _fromiter(::Type{T}, itr, y) where {T}
 end
 
 function _force!(c::_LazyCell{T}) where {T}
+    c.state == _FORCING &&
+        throw(ArgumentError("a LazyList cell was forced while it was being forced: the list refers to itself without a delay"))
     if c.state == _UNFORCED
-        r = c.thunk()
-        if r === nothing
-            c.state = _EMPTY
-        else
-            x, rest = r
-            c.head = x
-            c.tail = (rest::LazyList{T}).cell
-            c.state = _CONS
+        c.state = _FORCING
+        try
+            r = c.thunk()
+            if r === nothing
+                c.state = _EMPTY
+            else
+                x, rest = r
+                c.head = x
+                c.tail = (rest::LazyList{T}).cell
+                c.state = _CONS
+            end
+        catch
+            c.state = _UNFORCED
+            rethrow()
         end
         c.thunk = nothing
     end

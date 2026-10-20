@@ -70,3 +70,14 @@ end
         @test allocs(run, valid(3, String)) == 0
     end
 end
+
+@testitem "Validation: bimap types the error the same way on both branches (review SF-4)" tags = [:unit] begin
+    using ChuiTypes
+    const U = ChuiTypes.Upstream
+    h = x -> x == "a" ? 1 : "z"
+    a = U.bimap(h, identity, invalid("a", Int))
+    b = U.bimap(h, identity, valid(1, String))
+    @test typeof(a) == typeof(b)
+    @test errors(a) == [1]
+    @test errors(U.ap(map(x -> (y -> x + y), b), a)) == [1]
+end

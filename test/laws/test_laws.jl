@@ -11,7 +11,7 @@
     L.test_monad_laws(T, L.ints, L.options, L.optfns, ff)
     L.test_alternative_laws(T, Int, L.options)
     L.test_foldable_laws(L.options)
-    L.test_traversable_laws(L.options, L.optfns, L.eitherfns)
+    L.test_traversable_laws(T, L.options, L.optfns, L.eitherfns)
     struct Plus end
     U.combine(::Plus, a::Int, b::Int) = a + b
     L.test_monoid_laws(ChuiTypes.OptionMonoid(Plus(), Int), L.options)
@@ -28,7 +28,7 @@ end
     L.test_monad_laws(T, L.ints, L.eithers, L.eitherfns, ff)
     L.test_bifunctor_laws(L.eithers, strfns, L.intfns)
     L.test_foldable_laws(L.eithers)
-    L.test_traversable_laws(L.eithers, L.optfns, L.eitherfns)
+    L.test_traversable_laws(T, L.eithers, L.optfns, L.eitherfns)
 end
 
 @testitem "laws: Validation" tags = [:laws] setup = [LawKits] begin
@@ -49,7 +49,7 @@ end
     L.test_applicative_laws(T, L.ints, vals, L.intfns, ff)
     L.test_bifunctor_laws(vals, strfns, L.intfns)
     L.test_foldable_laws(vals)
-    L.test_traversable_laws(vals, L.optfns, L.eitherfns)
+    L.test_traversable_laws(T, vals, L.optfns, L.eitherfns)
     L.test_semigroup_laws(S, vals)
 end
 
@@ -76,7 +76,7 @@ end
     L.test_functor_laws(T, thesev, L.intfns)
     L.test_bifunctor_laws(thesev, logfns, L.intfns)
     L.test_foldable_laws(thesev)
-    L.test_traversable_laws(thesev, L.optfns, L.eitherfns)
+    L.test_traversable_laws(T, thesev, L.optfns, L.eitherfns)
     L.test_applicative_laws(T, L.ints, thesev, L.intfns, ff)
     L.test_monad_laws(T, L.ints, thesev, kfns, ff)
 end
@@ -87,12 +87,18 @@ end
     const T = ChuiTypes.NonEmptyTag()
     nes = map(v -> nonempty(v...), Data.Vectors(L.ints; min_size = 1, max_size = 4))
     ff = Data.SampledFrom(Any[nonempty(x -> x + 1), nonempty(x -> 2x, x -> -x), nonempty(identity, x -> x ÷ 3, x -> 0)])
-    kfns = Data.SampledFrom(Function[x -> nonempty(x), x -> nonempty(x, -x), x -> nonempty(x, x + 1, x + 2)])
+    # includes type-changing continuations, so a converting `chain` breaks associativity
+    kfns = Data.SampledFrom(
+        Function[
+            x -> nonempty(x), x -> nonempty(x, -x), x -> nonempty(x, x + 1, x + 2),
+            x -> iseven(x) ? nonempty(x) : nonempty(x + 0.5), x -> nonempty(x isa Int),
+        ]
+    )
     L.test_functor_laws(T, nes, L.intfns)
     L.test_applicative_laws(T, L.ints, nes, L.intfns, ff)
     L.test_monad_laws(T, L.ints, nes, kfns, ff)
     L.test_foldable_laws(nes)
-    L.test_traversable_laws(nes, L.optfns, L.eitherfns)
+    L.test_traversable_laws(T, nes, L.optfns, L.eitherfns)
     L.test_semigroup_laws(ChuiTypes.NonEmptySemigroup(), nes)
 end
 

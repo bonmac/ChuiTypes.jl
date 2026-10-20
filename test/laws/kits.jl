@@ -53,9 +53,16 @@
 
     # ---- Functor ------------------------------------------------------------------------------
 
-    function test_functor_laws(tag, gen_fa, gen_f; eq = isequal)
+    # `gen_typed` (default: `typedfns`, for Int elements) draws from a few type-changing
+    # functions, so an instance that converts values (`isequal(1, 1.0)` hides it) is caught
+    # often enough by composition with a type test (review SHOULD-FIX-2).
+    function test_functor_laws(tag, gen_fa, gen_f; eq = isequal, gen_typed = typedfns)
         law("functor: identity", fa -> eq(U.fmap(identity, fa), fa), gen_fa)
         law("functor: composition", (fa, f, g) -> eq(U.fmap(x -> f(g(x)), fa), U.fmap(f, U.fmap(g, fa))), gen_fa, gen_f, gen_f)
+        law(
+            "functor: composition, type-changing functions",
+            (fa, f, g) -> eq(U.fmap(x -> f(g(x)), fa), U.fmap(f, U.fmap(g, fa))), gen_fa, gen_typed, gen_typed
+        )
         return nothing
     end
 
@@ -149,8 +156,10 @@
     # The natural transformation Option → Either{String} (an applicative morphism).
     o2e(o::Option{T}) where {T} = issome(o) ? right(String, get(o, nothing)::T) : left("none", T)
 
-    # gen_f: functions value → Option; gen_g: functions value → Either{String}.
-    function test_traversable_laws(gen_t, gen_f, gen_g; eq = isequal)
+    # `tag`: the traversed type's tag (kit shape, upstream ADR-0001 §6; the laws themselves use
+    # the Identity, Option, Either and Compose applicatives). gen_f: functions value → Option;
+    # gen_g: functions value → Either{String}.
+    function test_traversable_laws(tag, gen_t, gen_f, gen_g; eq = isequal)
         TO, TE = ChuiTypes.OptionTag(), ChuiTypes.EitherTag{String}()
         law("traversable: identity", t -> eq(U.traverse(IdTag(), Identity, t), Identity(t)), gen_t)
         law("traversable: naturality", (t, f) -> eq(o2e(U.traverse(TO, f, t)), U.traverse(TE, x -> o2e(f(x)), t)), gen_t, gen_f)
@@ -202,7 +211,16 @@
     # ---- Shared generators ----------------------------------------------------------------------
 
     const ints = map(Int, Data.Integers{Int8}())
-    const intfns = Data.SampledFrom(Function[x -> x + 1, x -> 2x, x -> -x, x -> x ÷ 3, identity, x -> x * x - 1])
+    # Includes type-changing functions (Int → Float64 for odd inputs, and a type test), so an
+    # instance that converts values (e.g. by `promote_type`) breaks functor composition even
+    # though `isequal(1, 1.0)` holds (review SHOULD-FIX-2).
+    const intfns = Data.SampledFrom(
+        Function[
+            x -> x + 1, x -> 2x, x -> -x, x -> x ÷ 3, identity, x -> x * x - 1,
+            x -> iseven(x) ? x : x + 0.5, x -> x isa Int,
+        ]
+    )
+    const typedfns = Data.SampledFrom(Function[x -> iseven(x) ? x : x + 0.5, x -> x isa Int, x -> x + 1])
 
     const options = map(x -> x % 4 == 0 ? none(Int) : some(x), ints)
     const optfns = Data.SampledFrom(Function[x -> some(x + 1), x -> iseven(x) ? some(x ÷ 2) : none(Int), x -> none(Int), x -> some(-x)])

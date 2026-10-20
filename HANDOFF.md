@@ -35,6 +35,12 @@ every checkpoint. Keep it short; history lives in git and in ADRs.
 
 ## Decisions waiting (for the lead)
 
+0. **★ `LazyList` and ADR-0001 §4** (reviewer SHOULD-FIX-1). A lazily mapped list fixes its
+   element type from `promote_op` at `map` time and stores values computed later, so a method
+   added before forcing can make forcing throw. ADR-0001 §4 says stale inference never costs
+   correctness. Options: (a) amend ADR-0001 to name `LazyList` as the documented exception
+   (recommended; spec §6), or (b) element type `Any` for lazily mapped lists (loses type
+   stability). The code implements (a)'s behaviour and documents it; it waits for the user.
 1. **`docs/CHECK_COVERAGE.md` row for the ChuiCore grep test** (ADR-0004 §1). The file is
    generated from `.agents/checks.local.toml`, outside this lane's scope. Blind spots to list:
    names built at run time (`getfield(Main, Symbol(...))`, `eval`), modules reached through

@@ -40,13 +40,25 @@ end
     end
     U.fmap(f, t::Twice) = f === identity ? t : Twice(f(f(t.x)))
     U.bimap(f, g, t::Twice) = (f === identity && g === identity) ? t : Twice(f(g(t.x)))
+    struct Conv                                         # map converts values by promote_type
+        v::Vector{Any}
+    end
+    function U.fmap(f, c::Conv)
+        ys = map(f, c.v)
+        T = mapreduce(typeof, promote_type, ys)
+        return Conv(Any[convert(T, y) for y in ys])
+    end
+    Base.isequal(a::Conv, b::Conv) = isequal(a.v, b.v)
     counts = map(x -> Count(x, 0), L.ints)
     twices = map(Twice, L.ints)
+    convs = map(v -> Conv(Any[v...]), Data.Vectors(L.ints; min_size = 2, max_size = 4))
     nonid = Data.SampledFrom(Function[x -> x + 1, x -> 2x])
 
     @test "functor: identity" in first(L.planted(() -> L.test_functor_laws(nothing, counts, L.intfns)))
     failed, passed = L.planted(() -> L.test_functor_laws(nothing, twices, nonid))
     @test "functor: composition" in failed && "functor: identity" in passed
+    failed, passed = L.planted(() -> L.test_functor_laws(nothing, convs, nonid))
+    @test "functor: composition, type-changing functions" in failed && "functor: composition" in passed
     @test "bifunctor: identity" in first(L.planted(() -> L.test_bifunctor_laws(counts, L.intfns, L.intfns)))
     failed, passed = L.planted(() -> L.test_bifunctor_laws(twices, nonid, nonid))
     @test "bifunctor: composition" in failed && "bifunctor: identity" in passed
@@ -152,9 +164,9 @@ end
     U.traverse(tag::ChuiTypes.OptionTag, f, p::Peek) = U.pure(tag, p)
     U.traverse(tag, f, p::Peek) = U.fmap(Peek, f(p.x))
     nonid = Data.SampledFrom(Function[x -> some(x + 1), x -> some(2x)])
-    failed, passed = L.planted(() -> L.test_traversable_laws(map(x -> Count(x, 0), L.ints), L.optfns, L.eitherfns))
+    failed, passed = L.planted(() -> L.test_traversable_laws(nothing, map(x -> Count(x, 0), L.ints), L.optfns, L.eitherfns))
     @test "traversable: identity" in failed && "traversable: composition" in failed
     @test "traversable: naturality" in passed
-    failed, _ = L.planted(() -> L.test_traversable_laws(map(Peek, L.ints), nonid, L.eitherfns))
+    failed, _ = L.planted(() -> L.test_traversable_laws(nothing, map(Peek, L.ints), nonid, L.eitherfns))
     @test "traversable: naturality" in failed
 end

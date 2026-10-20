@@ -48,3 +48,26 @@ end
     @test @inferred(U.chain(x -> nonempty(x, x), nonempty(1, 2))) == nonempty(1, 1, 2, 2)
     @test @inferred(foldl(+, nonempty(1, 2))) == 3
 end
+
+@testitem "NonEmpty: map and chain never convert element values (review BLOCKER-2)" tags = [:unit] begin
+    using ChuiTypes
+    const U = ChuiTypes.Upstream
+    ne = nonempty(1, 2)
+    f = x -> x == 1 ? 1 : 2.5
+    g = x -> x isa Int
+    @test map(x -> g(f(x)), ne) == map(g, map(f, ne))
+    @test collect(map(f, ne)) == Real[1, 2.5] && first(map(f, ne)) isa Int
+    big = map(x -> x == 1 ? 2^60 + 1 : 0.5, ne)
+    @test first(big) === 2^60 + 1
+    @test eltype(map(f, ne)) == Real
+    # the element type no longer depends on the tail's length (empty tail: inference, ADR-0001 §4)
+    @test eltype(map(f, nonempty(1))) == Real && first(map(f, nonempty(1))) === 1
+    @test collect(U.chain(x -> x == 1 ? nonempty(1) : nonempty(2.5), ne)) == Real[1, 2.5]
+    @test first(U.chain(x -> x == 1 ? nonempty(1) : nonempty(2.5), ne)) isa Int
+    tr = U.traverse(ChuiTypes.OptionTag(), x -> some(f(x)), ne)
+    @test first(get(tr, nothing)) isa Int
+    @test_throws ArgumentError ne[true]                      # Bool is not an index (review NIT-4)
+    # traverse is linear: a long tail completes and keeps order
+    long = nonempty(0, 1:20_000...)
+    @test get(U.traverse(ChuiTypes.OptionTag(), some, long), nothing) == long
+end
