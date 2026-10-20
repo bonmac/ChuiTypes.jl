@@ -56,6 +56,7 @@ function erun(m::EState{S}, s0) where {S}
         isempty(stack) && return (a, s)
         cur = (pop!(stack)(a)::EState{S}).node
     end
+    return
 end
 
 # ---- B2: one concrete node with a tag ---------------------------------------------------------
@@ -94,13 +95,22 @@ function trun(m::TState{S}, s0) where {S}
         isempty(stack) && return (a, s)
         cur = (pop!(stack)(a)::TState{S}).node
     end
+    return
 end
 
 # a counter: get, put(s+1), n times; built left-nested (bind of bind of ...) and right-nested
 incr_e = _ -> ebind(s -> eput(s + 1), eget(Int))
 incr_t = _ -> tbind(s -> tput(s + 1), tget(Int))
-left_e(n) = (m = epure(Int, nothing); for _ in 1:n; m = ebind(incr_e, m); end; m)
-left_t(n) = (m = tpure(Int, nothing); for _ in 1:n; m = tbind(incr_t, m); end; m)
+left_e(n) = (
+    m = epure(Int, nothing); for _ in 1:n
+        m = ebind(incr_e, m)
+    end; m
+)
+left_t(n) = (
+    m = tpure(Int, nothing); for _ in 1:n
+        m = tbind(incr_t, m)
+    end; m
+)
 right_e(n) = n == 0 ? epure(Int, nothing) : ebind(_ -> right_e(n - 1), incr_e(nothing))
 right_t(n) = n == 0 ? tpure(Int, nothing) : tbind(_ -> right_t(n - 1), incr_t(nothing))
 
@@ -165,9 +175,14 @@ function wrun(node::WNode, combine, acc0)
         isempty(stack) && return (a, acc)
         cur = pop!(stack)(a)::WNode
     end
+    return
 end
 wtell(w) = WNode(0x02, w, nothing)
-wleft(n, w) = (m = WNode(0x00, nothing, nothing); for _ in 1:n; m = WNode(0x01, m, _ -> wtell(w)); end; m)
+wleft(n, w) = (
+    m = WNode(0x00, nothing, nothing); for _ in 1:n
+        m = WNode(0x01, m, _ -> wtell(w))
+    end; m
+)
 for (name, combine, acc0, w) in (
         ("Writer Int sum", +, 0, 1),
         ("Writer Vector vcat (copies the log)", vcat, Int[], [1]),

@@ -12,9 +12,25 @@ end
             :Either, :left, :right, :isleft, :isright, :fromleft, :fromright,
             :Validation, :valid, :invalid, :isinvalid, :errors,
             :These, :NonEmpty, :nonempty, :LazyList, :lazylist, :lazycons, :lazynil,
+            # phase 3: the effect runtime (spec 2026-10-20-phase3-effects-design.md §1)
+            :andthen, :Effect, :succeed, :fail, :die, :sync, :attempt, :defer,
+            :Exit, :Cause, :runexit, :EffectFailed, :Cancelled, :MissingService,
+            :catchfail, :catchcause, :mapfail, :provide, :service,
+            :checkcancel, :uninterruptible, :interruptiblemask, :interrupt!, :await,
+            :Fiber, :fork, :start, :scope, :race, :racefirst, :timeout, :timeoutfail, :zippar,
+            :bracket, :acquirerelease, :ensuring,
+            :delay, :clocktime, :VirtualClock, :advance!, :runtest,
+            :recurs, :spaced, :exponential, :async, :fromtask, :totask,
         ]
     )
-    public_only = Set([:this, :that, :both, :isthis, :isthat, :isboth, :here, :there])
+    public_only = Set(
+        [
+            :this, :that, :both, :isthis, :isthat, :isboth, :here, :there,
+            :EffectTag, :fromexit, :Success, :Failure, :Fail, :Die, :Interrupted,
+            :succeeded, :isfail, :isdie, :isinterrupted, :cause, :value, :failure, :suppressed,
+            :RealClock, :AbstractClock, :Schedule, :livefibers, :orphans,
+        ]
+    )
     @test Set(filter(n -> Base.isexported(ChuiTypes, n), names(ChuiTypes))) == exported ∪ Set([:ChuiTypes])
     if VERSION >= v"1.11"
         @test Set(names(ChuiTypes)) == exported ∪ public_only ∪ Set([:ChuiTypes])

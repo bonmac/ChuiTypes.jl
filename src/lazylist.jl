@@ -13,6 +13,8 @@ mutable struct _LazyCell{T}
     head::Union{Nothing, T}
     tail::Union{Nothing, _LazyCell{T}}
     thunk::Any
+    # Only the parametric constructor: the default outer one has an unbound `T` (Aqua, on 1.10).
+    _LazyCell{T}(state, head, tail, thunk) where {T} = new{T}(state, head, tail, thunk)
 end
 
 """
