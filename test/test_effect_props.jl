@@ -142,11 +142,18 @@
             # cancelling the adapter: ends Interrupted at once and counts the abandoned task
             # `t` is scheduled by the adapter's register step, which then parks at once; waiting
             # for `t` to start removes the race of interrupting before the adapter runs.
-            gate, started = Base.Event(), Base.Event()
-            t = @task (notify(started); wait(gate); n)
+            gate = Base.Event()
+            t = @task (wait(gate); n)
             o = ChuiTypes.orphans()
             f = start(fromtaskfn(t))
-            wait(started)
+            t0 = time()                     # bounded: an adapter that never starts `t` fails
+            while !istaskstarted(t) && time() - t0 < 5
+                sleep(0.001)
+            end
+            if !istaskstarted(t)
+                interrupt!(f)
+                return false
+            end
             sleep(0.01)
             interrupt!(f)
             waitfor(f)
@@ -237,6 +244,7 @@ end
     # it, so a cancelled run cannot hang the planted test)
     wrapping_fromtask(t) = async(
         cb -> begin
+            istaskstarted(t) || schedule(t)
             Threads.@spawn(
                 cb(
                     try
