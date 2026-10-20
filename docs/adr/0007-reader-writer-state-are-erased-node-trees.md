@@ -1,6 +1,9 @@
 # ADR-0007: Reader, Writer and State are erased node trees with a declared parameter, run by a pure trampoline
 
-- **Status:** Proposed (phase 3; goes to the user at the phase-3 report)
+- **Status:** Accepted (2026-10-20, user at the ChuiTypes phase-3 ★). Also decided there: the
+  phase-3 names as proposed (`andthen` the public bind), a child failure fails its scope even when
+  awaited, combinator helpers detached from cancellation inside masked regions, and test-mode virtual
+  time frozen while a plain `Task` runs.
 - **Date:** 2026-10-20
 - **Deciders:** the user, at the next ★ checkpoint (via the lead)
 - **Scope:** ChuiTypes.jl
