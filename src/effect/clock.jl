@@ -131,7 +131,8 @@ Run `eff` in **test mode** (ADR-0002 §10) and return its value or throw, like [
 Every fiber is a sticky task on the caller's thread and every `delay` uses `clock`. Whenever all
 fibers are parked, time jumps to the next due timer, so a program that sleeps for an hour runs at
 once and deterministically. Same-instant wake-ups run in scheduling order; this order is
-guaranteed only in test mode. With no timer due and the root not done, it throws (deadlock).
+guaranteed only in test mode. With no timer due, no outside progress within `timeout` seconds and
+the root not done, it interrupts the root and throws (deadlock).
 """
 function runtest(e::Effect; clock::VirtualClock = VirtualClock(), timeout::Real = 10.0)
     to = Float64(timeout)
@@ -148,7 +149,14 @@ function runtest(e::Effect; clock::VirtualClock = VirtualClock(), timeout::Real 
             end
             _isdone(f) && break
             _quiet(clock) || continue
-            error("runtest: deadlock: the root fiber is not done, every fiber is parked and no timer is due (at time $(_now(clock)))")
+            # Best effort: interrupt the root so its finalizers run and its fibers end (a
+            # masked wait that nothing completes still stays parked).
+            interrupt!(f)
+            try
+                _quiesce(clock, to)
+            catch
+            end
+            error("runtest: deadlock: the root fiber is not done, every fiber is parked and no timer is due (at time $(_now(clock))); the root was interrupted")
         end
         _fire!(tm.waiter::_Waiter)
     end

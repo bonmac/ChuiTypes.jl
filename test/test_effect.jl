@@ -331,8 +331,11 @@ end
     @test runtest(andthen(n -> map(t -> (n, t), clocktime()), retry(flaky, recurs(5, spaced(10)))); clock = vc) == (3, 20.0)
     tries[] = -100
     @test ChuiTypes.failure(ChuiTypes.cause(ChuiTypes.runexit(provide(retry(flaky, recurs(2)), VirtualClock())))) === :again
-    # a deadlock is reported
-    @test_throws ErrorException runtest(andthen(f -> await(f), fork(async(cb -> nothing))); timeout = 0.2)
+    # a deadlock is reported, and the root is interrupted so its fibers end
+    vc = VirtualClock()
+    stuck = async(cb -> () -> cb(ChuiTypes.Failure(ChuiTypes.Interrupted())))
+    @test_throws ErrorException runtest(andthen(f -> await(f), fork(stuck)); clock = vc, timeout = 0.2)
+    @test vc.live == 0
 end
 
 @testitem "Effect: schedules" tags = [:unit] begin

@@ -4,7 +4,14 @@
 @testitem "stress: no leaked fibers" tags = [:slow] begin
     using ChuiTypes
     using ChuiTypes: livefibers, orphans
+    # Items share one process: fibers that earlier items left running on purpose (the planted
+    # escaping fork ends after 50 ms) must end before the baseline is taken.
+    t0 = time()
+    while livefibers() != 0 && time() - t0 < 10
+        sleep(0.01)
+    end
     base_live, base_orph = livefibers(), orphans()
+    @test base_live == 0
     function settle(base)                 # finished tasks may still be decrementing
         t0 = time()
         while livefibers() != base && time() - t0 < 10
