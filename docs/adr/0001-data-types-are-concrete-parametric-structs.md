@@ -1,6 +1,7 @@
 # ADR-0001: Data types are concrete parametric structs with one slot per variant payload
 
-- **Status:** Accepted (2026-10-20, user at the ChuiTypes phase-1 ★)
+- **Status:** Accepted (2026-10-20, user at the ChuiTypes phase-1 ★); amended 2026-10-20 (§4,
+  `LazyList` exception: the user's answer to the phase-2 ★ decision 0, relayed by the lead)
 - **Date:** 2026-10-20
 - **Deciders:** the user, at the phase-1 ★ checkpoint (via the lead)
 - **Scope:** ChuiTypes.jl
@@ -75,6 +76,18 @@ evidence files in `.lanes/evidence/`).
      the other branch's, the two branches return different concrete types and a comprehension over
      them widens again (SUM-07). That is the documented price.
    - ExplicitImports gets an ignore entry for `Base.promote_op`.
+   - **Amendment (2026-10-20; the user's answer to the phase-2 ★ decision 0, option (a), relayed
+     by the lead to the lane; the lead confirms it before merge): `LazyList` is the
+     documented exception to "never correctness".** A lazily mapped `LazyList`
+     (`map`/`chain`/`ap`) fixes its element type from `promote_op` at `map` time and stores
+     values computed later, when cells are forced. If a method is added between `map` and
+     forcing, and it changes the function's return type, forcing can throw (for example
+     `g(x) = 1; l = map(g, lazylist(1:3)); @eval g(x) = 1.5; collect(l)` gives an
+     `InexactError`). The other types store eagerly computed values and keep the rule. The
+     behaviour is documented in `LazyList`'s docstring. Rejected alternative: element type `Any`
+     for lazily mapped lists, which loses type stability on iteration. Found by the phase-2
+     reviewer (SHOULD-FIX-1); spec `docs/superpowers/specs/2026-10-20-phase2-datatypes-design.md`
+     §6.
 5. **Equality, `hash` and `show`** are defined per type over the tag and the **active** slots,
    with `isequal`/`==` recursing into the payload (`some([1]) == some([1])`). `show` prints
    constructor syntax.

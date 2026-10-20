@@ -22,4 +22,7 @@
 /lcov.info
 /coverage/
 /tmp/
+# Supposition's counterexample database: every @check passes db=false, and a database written
+# by a newer Julia crashes 1.10 ("Cannot read stream serialized with a newer version")
+SuppositionDB/
 .DS_Store

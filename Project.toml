@@ -3,5 +3,9 @@ uuid = "c33459c2-7fd2-45be-ab80-42ad9256d649"
 version = "0.0.1"
 authors = ["Boniface Makone"]
 
+[deps]
+Compat = "34da2185-b29b-5c13-b0c7-acf172513d20"
+
 [compat]
+Compat = "4.10"
 julia = "1.10"
