@@ -128,13 +128,17 @@ end
 
 # ---- The widening sink ------------------------------------------------------------------------------
 # A chunk under construction: a `Vector{T}` of the advisory `T` while every element `isa T`, else
-# a `Vector{Any}` narrowed when emitted (never `convert`, ADR-0002 §1).
+# a `Vector{Any}` narrowed when emitted (never `convert`, ADR-0002 §1). An emitted vector is never
+# touched again (it belongs to the chunk): `_emit!` starts a fresh one, size-hinted to `cap`, the
+# length of the last emitted chunk (so it does not regrow; a sparse `filter` keeps a small one).
 
 mutable struct _Sink{T}
     v::Vector{T}
     wide::Union{Nothing, Vector{Any}}
+    cap::Int
 end
-_Sink{T}() where {T} = _Sink{T}(T[], nothing)
+_Sink{T}() where {T} = _Sink{T}(T[], nothing, 0)
+_Sink{T}(cap::Int) where {T} = _Sink{T}(sizehint!(T[], cap), nothing, cap)
 
 @inline function _sinkpush(s::_Sink{T}, x) where {T}
     if s.wide === nothing && x isa T
@@ -156,13 +160,17 @@ _sinkempty(s::_Sink) = isempty(s.v) && (s.wide === nothing || isempty(something(
 function _emit!(s::_Sink{T}) where {T}
     if s.wide === nothing
         v = s.v
-        s.v = T[]
+        s.cap = max(length(v), 1)
+        s.v = sizehint!(T[], s.cap)
         return v
     end
     w = something(s.wide)
     s.wide = nothing
-    return map(identity, w)
+    s.cap = max(length(w), 1)
+    return map(identity, w)          # `s.v` was never handed out: it is reused
 end
+# The chunk of a sink used for exactly one chunk (no replacement buffer).
+_take!(s::_Sink) = s.wide === nothing ? s.v : map(identity, something(s.wide))
 
 # ---- Simple sources -----------------------------------------------------------------------------
 
@@ -192,18 +200,17 @@ _close!(::_IterP, ::_Ctx) = nothing
 
 # The in-chunk loop, specialised on the iterator and its state (the function barrier).
 function _fillchunk(itr, y, n::Int, ::Type{T}) where {T}
-    s = _Sink{T}()
-    sizehint!(s.v, n)
+    s = _Sink{T}(n)
     k = 0
     while true
         x, st = y
         _sinkpush(s, x)
         k += 1
         if k == n
-            return _emit!(s), st, true
+            return _take!(s), st, true
         end
         y = iterate(itr, st)
-        y === nothing && return _emit!(s), st, false
+        y === nothing && return _take!(s), st, false
     end
     return
 end
