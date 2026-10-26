@@ -20,6 +20,9 @@ mutable struct _FusedP{RF, A, T} <: _Puller
     sink::_Sink{T}
     done::Bool
     pending::Union{Nothing, Cause}
+    # The last `ctx` pulled with, already boxed: handing it to the dynamic `_spull!(up, …)` call
+    # then allocates nothing (a fresh `_Ctx` box per chunk otherwise).
+    ctxbox::Any
 end
 
 function _open(f::_Fused, ctx::_Ctx)
@@ -30,7 +33,7 @@ end
 function _openfused(rf, up, ::Type{T}) where {T}
     sink = _Sink{T}()
     acc = U.start(rf, sink)
-    return _FusedP{typeof(rf), typeof(acc), T}(up, rf, acc, sink, false, nothing)
+    return _FusedP{typeof(rf), typeof(acc), T}(up, rf, acc, sink, false, nothing, nothing)
 end
 
 # The in-chunk loop (the function barrier: specialised on `rf`, `acc` and the chunk type).
@@ -43,14 +46,31 @@ function _runchunk(rf::RF, acc::A, chunk) where {RF, A}
     return acc
 end
 
+# One chunk through the pipeline: the one dynamic call per chunk, on the puller (already on the
+# heap) and the chunk (already boxed), so `rf` and `acc` are never boxed. Stores the new
+# accumulator; on `Reduced`, completes and returns `true`.
+function _fusedchunk!(p::_FusedP, chunk)
+    a = _runchunk(p.rf, p.acc, chunk)
+    if a isa U.Reduced
+        U.complete(p.rf, a.value)
+        return true
+    end
+    p.acc = a
+    return false
+end
+
 function _pull!(p::_FusedP, ctx::_Ctx)
     if p.done
         c = p.pending
         p.pending = nothing
         return c
     end
+    cb = p.ctxbox
+    if !(cb isa _Ctx && cb === ctx)
+        p.ctxbox = ctx
+    end
     while true
-        r = _spull!(p.up, ctx)          # checks the cancel state: an empty output re-pulls (review B1)
+        r = _spull!(p.up, p.ctxbox)     # checks the cancel state: an empty output re-pulls (review B1)
         if r === nothing
             p.done = true
             U.complete(p.rf, p.acc)
@@ -60,17 +80,14 @@ function _pull!(p::_FusedP, ctx::_Ctx)
             p.done = true
             return r
         end
-        a = _runchunk(p.rf, p.acc, r)
-        if a isa U.Reduced
+        if _fusedchunk!(p, r)::Bool
             p.done = true
-            U.complete(p.rf, a.value)
             # stop the upstream at once: its fibers end and its releases run now
             p.pending = _sclose!(p.up, ctx)
             p.up = _EndP()
             _sinkempty(p.sink) && return _pull!(p, ctx)
             return _emit!(p.sink)
         end
-        p.acc = a
         _sinkempty(p.sink) || return _emit!(p.sink)
     end
     return

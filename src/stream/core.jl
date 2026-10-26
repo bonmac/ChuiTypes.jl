@@ -102,8 +102,10 @@ function _runnested(node::_ENode, ctx::_Ctx)
     return x
 end
 
-# The run driver: open, pull every chunk into `consume!` (which may throw), close.
-function _drive(consume!, src, ctx::_Ctx)
+# The run driver: open, pull every chunk into `consume!` (which may throw), close. `consume!` is
+# not specialised on: it stays boxed, so the dynamic call on each (untyped) chunk does not box
+# the closure again per chunk.
+function _drive(@nospecialize(consume!), src, ctx::_Ctx)
     p = _sopen(src, ctx)
     out = try
         ScopedValues.with(_CTX => ctx) do
