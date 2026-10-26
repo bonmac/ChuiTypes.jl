@@ -92,6 +92,11 @@ source_vector(v) = run(runfold(+, 0, fromiter(v)))
 source_generic(v) = run(runfold(+, 0, fromiter(Iterators.take(v, length(v)))))
 SUITE["streams"]["fromiter Vector runfold 10^6"] = @benchmarkable source_vector($SV)
 SUITE["streams"]["fromiter generic iterator runfold 10^6"] = @benchmarkable source_generic($SV)
+# merge over Vector sources: a known phase-5 loss (fast pumps on the default thread fill the
+# queue and park once per chunk while the consumer runs on the interactive thread).
+const SV4 = [collect(1:(SN ÷ 4)) for _ in 1:4]
+stream_merge4_vector(vs) = run(runfold(+, 0, merge((fromiter(v) for v in vs)...)))
+SUITE["streams"]["merge 4x2.5e5 Vector"] = @benchmarkable stream_merge4_vector($SV4)
 
 """
     interpreter_allocs_per_bind() -> (effect, state)

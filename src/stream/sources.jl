@@ -107,10 +107,12 @@ function _copychunk(a::AbstractVector{T}, i::Int, n::Int) where {T}
             v[k] = a[i + k - 1]
         end
     else
-        # A view's parent may have shrunk: keep the checked read. Ranges keep it too: an unchecked
-        # (vectorised) range copy is 2.6x faster here but made `merge` over range sources about
-        # 3x slower per element (median; faster pumps, cause not established; measured
-        # 2026-10-26, evidence p5-perf-merge). Revisit with merge's scheduling.
+        # Views and ranges read through `getindex` without `@inbounds`. For a view that checks only
+        # the view's own axes, not its parent's: a parent that shrank is caught (or not) exactly
+        # as by iteration, which reads the same way. Ranges keep the bounds-checked read: an
+        # unchecked (vectorised) range copy is 2.6x faster here but made `merge` over range
+        # sources about 3x slower per element (median): faster pumps keep merge's queue full
+        # and park once per chunk across threads (evidence p5-perf-merge, p5-perf-merge-cause).
         for k in 1:n
             x = a[i + k - 1]
             @inbounds v[k] = x
