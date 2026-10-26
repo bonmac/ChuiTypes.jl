@@ -213,7 +213,7 @@ function _interpret(node::_ENode, ctx0::_Ctx)
                 a = val
                 ctx = fr.c::_Ctx
                 rel = fr.b
-                push!(stack, _Frame(_F_FIN, x -> rel(a, x)))
+                push!(stack, _Frame(_F_FIN, _releaser(rel, a)))
                 try
                     cur = _nodeof(fr.a(a), "bracket's use function")
                     mode = _MODE_EVAL
@@ -229,11 +229,11 @@ function _interpret(node::_ENode, ctx0::_Ctx)
                 if s === nothing
                     # Unreachable (every run and fiber body is a scope); release at once rather
                     # than drop the resource (reviewer S3).
-                    push!(stack, _Frame(_F_FIN, x -> rel(a, x)))
+                    push!(stack, _Frame(_F_FIN, _releaser(rel, a)))
                     cause = Die(ErrorException("ChuiTypes: acquirerelease outside a scope"))
                     mode = _MODE_FAIL
                 else
-                    @lock s.lock push!(s.finalizers, x -> rel(a, x))
+                    @lock s.lock push!(s.finalizers, _releaser(rel, a))
                 end
             elseif k == _F_FIN
                 ctx, cur = _startfin!(stack, fr.a, Success(val), ctx)
@@ -285,6 +285,11 @@ function _interpret(node::_ENode, ctx0::_Ctx)
     end
     return
 end
+
+# The finalizer `x -> rel(a, x)`, built outside `_interpret`: a closure there captures `rel` and
+# `a`, which its loop assigns in several branches, so every loop step allocated two `Core.Box`es
+# (6 of the 8 allocations per `andthen` bind; phase-5 spec D7).
+_releaser(rel, a) = x -> rel(a, x)
 
 # Run a finalizer `rel(exit)` masked; `_F_FINDONE` restores the outcome afterwards.
 function _startfin!(stack, rel, x::Exit, ctx::_Ctx)
