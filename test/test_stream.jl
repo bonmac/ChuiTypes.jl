@@ -83,6 +83,10 @@ end
     @test isequal(cs, [[1, 2], [2.5, 4], [5, 6], [7]])
     @test eltype(cs[1]) === Int && eltype(cs[3]) === Int && eltype(cs[2]) === Real   # never converted
     @test cs[2][1] isa Float64 && cs[2][2] isa Int
+    # runfold's typed accumulator (Int + Int -> Int) meets a Float64: it continues untyped
+    @test run(runfold(+, 0, fromiter(Liar2(); chunksize = 2))) === 27.5
+    @test run(runfold(+, 0, map(identity, fromiter(Liar2(); chunksize = 3)))) === 27.5
+    @test run(runfold((a, x) -> a * x, 1, fromiter(1:5))) === 120
     @test isequal(run(runcollect(filter(x -> x != 4, map(identity, fromiter(Liar2()))))), [1, 2, 2.5, 5, 6, 7])
     # chunks are owned: later chunks never overwrite earlier ones (sparse, dense and widened)
     for s in (filter(x -> x % 97 == 0, fromiter(1:5000)), map(x -> 2x, fromiter(1:5000; chunksize = 100)),
