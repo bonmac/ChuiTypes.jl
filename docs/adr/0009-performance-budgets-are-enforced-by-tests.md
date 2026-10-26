@@ -91,7 +91,7 @@ Time rows, 1.13.2, ns per element or bind, median / min: before `p5-perf-before-
 
 | Alternative | Why rejected |
 |---|---|
-| PrecompileTools `@compile_workload` | It would be a new direct dependency (ADR-0005 §2). The claim that it measured no faster is UNVERIFIED here: no evidence file in this repo |
+| PrecompileTools `@compile_workload` | It would be a new direct dependency (ADR-0005 §2). On a prototype at 08e9468 it measured no faster than the dependency-free workload: workload-total medians of 0.315 s vs 0.269 s on 1.13.2, and 0.185 s vs 0.150 s on 1.10.12. N = 7, 1-min load 5.4, loaded (`ttfx-p5-08e9468.txt`) |
 | Asserting the TTFX target, or failing CI on time rows | Too load-sensitive on a shared machine (medians above move up to 2× under load); coordinator ADR-0011 |
 | One allocation row for all versions | 1.10 allocates about one fewer per 1024-element Vector (`test/test_perf.jl`) |
 | Half-drain putter wake for `merge` | It changes `offer`'s contract (Losses) |
@@ -113,7 +113,7 @@ Time rows, 1.13.2, ns per element or bind, median / min: before `p5-perf-before-
 ## Verification
 
 At 9bbf10c, `ci.jl test -- all` passes the budget item (same mode-A counts) and the `:slow` TTFX
-ceiling on both versions (`tests-9bbf10c.txt`, `tests-lts-9bbf10c.txt`; load 8.4–8.6). UNVERIFIED: PrecompileTools timing; integrated TTFX medians.
+ceiling on both versions (`tests-9bbf10c.txt`, `tests-lts-9bbf10c.txt`; load 8.4–8.6). PENDING: integrated TTFX medians (quiet-window re-measure).
 
 ## Revisit when
 
