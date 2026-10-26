@@ -114,6 +114,20 @@ They run on the one runtime (ADR-0002). Facts from
     1024-element chunk. The per-chunk concurrency claim is consistent: `merge`, `prefetch` and
     `mergemap` cost 3.4–7.1 ns per element. Evidence: `.lanes/evidence/bench-streams-bd8bcc0.txt`.
     Meeting the claim is a **phase-5 target**.
+  - **Measured 2026-10-26 (phase 5), the claim is met for sources, NOT for fused operators.**
+    On 1.13.2, one thread, 12 cores, load average 4.2–5.2 (another lane and a system daemon
+    running: a loaded run), after the phase-5 changes (pre-sized indexed sink, indexed
+    `fromiter` source, typed generic source state, no per-chunk boxing, typed `runfold`
+    accumulator): `fromiter` over a `Vector` folded costs 0.36 ns per element (2.50 before);
+    fused `map`/`filter` collect over a range 2.11 (3.86 before), about 3.9× the Base
+    equivalent (0.54); fused `map` then `runfold` 1.83 (4.90 before), about 23× Base `foldl`
+    over a `Vector` (0.081, SIMD). Allocations per 1024-element chunk: 3.1 for a source
+    folded, 6.1 for a fused pipeline (13.1 and 21–25 before). The per-element cost left is
+    the scalar in-chunk loop through the transducers (about 0.9 ns) and the range copy (about
+    0.8 ns, kept checked: an unchecked one made `merge` 3× slower). Evidence (medians):
+    `.lanes/evidence/p5-perf-before-4ec7894.txt`, `p5-perf-after-3c4e32e.txt`,
+    `p5-perf-micro-3c4e32e.txt` (the in-chunk loop), `p5-perf-merge-4ec7894.txt`; allocations
+    are budgeted in `test/test_perf.jl`.
 - Streams come after the runtime's `Queue`, `Scope`, clock and test mode (phase 3), so they land
   in phase 4.
 - A chunk adds latency for sparse sources; partial chunks bound it, and phase 4 tests this.

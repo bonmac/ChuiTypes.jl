@@ -89,8 +89,10 @@ end
     @test run(runfold((a, x) -> a * x, 1, fromiter(1:5))) === 120
     @test isequal(run(runcollect(filter(x -> x != 4, map(identity, fromiter(Liar2()))))), [1, 2, 2.5, 5, 6, 7])
     # chunks are owned: later chunks never overwrite earlier ones (sparse, dense and widened)
-    for s in (filter(x -> x % 97 == 0, fromiter(1:5000)), map(x -> 2x, fromiter(1:5000; chunksize = 100)),
-              Iterators.take(scan(+, 0, fromiter(1:5000)), 4321))
+    for s in (
+            filter(x -> x % 97 == 0, fromiter(1:5000)), map(x -> 2x, fromiter(1:5000; chunksize = 100)),
+            Iterators.take(scan(+, 0, fromiter(1:5000)), 4321),
+        )
         chunks = run(runchunks(s))
         @test reduce(vcat, chunks) == run(runcollect(s))
         @test allunique(map(objectid, chunks))

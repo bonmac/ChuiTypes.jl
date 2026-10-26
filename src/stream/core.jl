@@ -9,11 +9,12 @@ nothing; each run (with [`runcollect`](@ref), [`runfold`](@ref), [`runforeach`](
 [`runchunks`](@ref) or [`withbatches`](@ref)) starts it from the beginning and pulls it in
 **chunks** (about 1024 elements) that operators process with specialised loops.
 
-Cost, measured 2026-10-20 on Julia 1.13.2 (one thread, loaded machine; ADR-0003 "Measured"):
-a fused `map`/`filter` collect costs about 3.8 ns per element (about 5.5× the same Base code on a
-`Vector`), `runfold` about 5.3 ns per element (about 43× Base `foldl`), with about 24
-allocations (15 KB) per chunk; `merge`/`prefetch`/`mergemap` cost 3.4–7.1 ns per element.
-Iterator-level cost is a phase-5 target, not yet met.
+Cost, measured 2026-10-26 on Julia 1.13.2 (one thread, loaded machine; ADR-0003 "Measured"):
+`fromiter` over a `Vector`, folded, costs about 0.4 ns per element; a fused `map`/`filter`
+collect over a range about 2.1 ns (about 4× the same Base code), `runfold` after a `map` about
+1.8 ns (about 23× Base `foldl` over a `Vector`), with 3–6 allocations per chunk;
+`merge`/`prefetch`/`mergemap` cost 1–4 ns per element. Fused operators do not yet cost what an
+iterator does.
 
 `T` is **advisory**, as for [`Effect`](@ref): computed when the value is built, a supertype of
 every element, never asserted and never used to convert (`eltype(s)` returns it).
