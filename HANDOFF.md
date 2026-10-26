@@ -5,72 +5,105 @@ every checkpoint. Keep it short; history lives in git and in ADRs.
 
 ## State
 
-- **Branch:** `feat/phase4-streams`, cut from `main` at `bd8bcc0` (phases 1–3 merged). It is
-  **not merged**: it waits for the lead's review and merge.
-- **Remote:** none pushed from this lane.
-- **Phase:** **phase 4 (futures and streams) is implemented** on the branch.
-  - Spec: `docs/superpowers/specs/2026-10-20-phase4-streams-design.md` (critic: ACCEPT WITH
-    FIXES; fixes applied). ADR-0008 (**Accepted** at the phase-4 ★): a bounded stream becomes a ChuiFrames Source
-    by a snapshot (`runchunks`).
-  - `src/stream/`: `queue.jl` (Queue), `core.jl` (Stream, protocol, driver, sources, run
-    functions, `withbatches`), `fused.jl` (transducer-fused element operators), `sequential.jl`
-    (concat, concatmap, catchfail, retry), `concurrent.jl` (pumps, merge, prefetch, mergemap,
-    switchmap), `time.jl` (interval, timer, throttle, debounce, buffertime, windowtime), `hot.jl`
-    (Subject), `adapters.jl` (fromchannel, tochannel), `marbles.jl`, `futures.jl` (collectpar).
-    `src/upstream.jl` gains transducer stand-ins mirroring ChuiCore's protocol.
-  - Tests: `test_queue.jl`, `test_stream.jl`, `test_stream_marbles.jl`, `test_stream_hot.jl`,
-    `test_stream_adapters.jl`, `test_stream_source.jl`, `test_futures.jl`,
-    `test_stream_props.jl` (properties + planted), `laws/test_laws_stream.jl`,
-    `test_stream_stress.jl` (`:slow`). Benchmarks: `benchmark/benchmarks.jl` group `streams`.
-- **Dependencies:** unchanged (`Compat`, `ScopedValues`). ChuiCore is still not a dependency.
-- **Evidence files:** `.lanes/evidence/` (gitignored); the lane's report lists commands and counts.
+- **Branch:** `feat/phase5`, the phase-5 integration branch, cut from `main` at `08e9468`
+  (phases 1–4 and factory 0.2.7 merged). **Not merged**: the lead merges it into `main` after
+  the final review.
+- **Remote:** nothing pushed.
+- **Phase:** **phase 5 (performance: allocations and TTFX) is implemented** on the branch.
+  - Spec: `docs/superpowers/specs/2026-10-26-phase5-performance-design.md`. Plan:
+    `docs/superpowers/plans/2026-10-26-phase5-performance.md`. Critic: FINAL ACCEPT.
+  - Lane `p5-perf`, merged at `9bbf10c`, covered the stream hot path:
+    - an indexed `fromiter` source for Vector, ranges and Vector views (`src/stream/sources.jl`);
+    - a typed generic-source state;
+    - a pre-sized, indexed fused sink;
+    - no per-chunk boxing;
+    - a typed `runfold` accumulator;
+    - a LazyList barrier;
+    - an interpreter `Core.Box` removed.
+    - New tests: `test/test_perf.jl` (allocation budgets) and `test/test_stream_fastpath.jl`.
+    - ADR-0003 got a dated note: "fused operators cost what an iterator does" is still NOT met
+      (about 3.8× Base collect, 22× Base foldl). The lead accepted this for phase 5.
+  - Lane `p5-ttfx`, merged at `c67c87d`, added the precompile workload:
+    - a dependency-free workload, run only while the image is generated (`src/precompile.jl`);
+    - `benchmark/ttfx.jl`;
+    - `test/test_precompile.jl`.
+    - TTFX workload total: 1.77 → 0.28 s on 1.13.2, 1.30 → 0.18 s on 1.10.12 (loaded machine).
+  - **ADR-0009** (Accepted by the user at the phase-5 merge, 2026-10-26) records the performance budgets, enforced by tests. It cites
+    `test/test_perf.jl` and `test/test_precompile.jl`, and also records the losses, the JET
+    triage and the follow-ups.
+- **Dependencies:** unchanged (`Compat`, `ScopedValues`). PrecompileTools was rejected
+  (ADR-0005 §2; ADR-0009).
+- **Evidence:** `.lanes/evidence/` (gitignored) of each worktree. The integration files are
+  `tests-ff93788.txt` (17283 pass, 1.13) and `tests-lts-ff93788.txt` (17268 pass, 1.10), both
+  clean, on the tree of `0c3d22d`. The earlier `tests-lts-9bbf10c.txt` was dirty only because
+  the ADR-0009 draft was uncommitted. Every lane evidence file is copied into the phase5
+  worktree's `.lanes/evidence/`, so the p5 worktrees can be removed.
+- **Final-review blocker B1, fixed:** `fromiter` over a range longer than `typemax(Int)` was
+  empty or threw. Such a range now falls back to iteration (`ff93788`, merged at `0c3d22d`).
 
 ## Open lanes
 
-| Lane | Agent | File scope | Status | Report |
-|---|---|---|---|---|
-| `phase4-streams` | types-p4 (lead-dispatched) | `src/**`, `ext/**`, `test/**`, `Project.toml`, `docs/**`, `benchmark/**`, `HANDOFF.md`, `changelog.d/phase4-streams.md`, `.gitignore`, `JuliaTestItems.toml` | implemented; review round 1 REJECT (B1, B2, S3–S5, N6–N8), all fixed with RED→GREEN tests; reviewer **FINAL ACCEPT** at `f72bed8`; waiting for the lead's merge | SendMessage to the lead, 2026-10-20 |
+| Lane | Branch | Status |
+|---|---|---|
+| `phase5` | `feat/phase5` | integration; reviewer FINAL APPROVE on `main...feat/phase5`; the user approved the merge and accepted ADR-0009 (2026-10-26); the lead merges |
 
-Follow-up the reviewer left as a NIT (not fixed on this branch): a non-leased pump's close cause
-is kept in a `_PumpCtl` the coordinator discards, so an inner whose input failed **and** whose
-close failed loses the close cause from the failure's `suppressed` list, as does a superseded
-`switchmap` inner's close failure (`src/stream/concurrent.jl`, `first(_forkpump(...))`).
+The lanes `p5-perf` and `p5-ttfx` are merged. Their worktrees were removed on 2026-10-26; the
+branches are kept. Their scratch is in the main checkout's `.lanes/archive/`.
 
-## Decisions taken (user at the phase-4 ★, 2026-10-20; all as recommended)
+## Decisions taken (the lead, 2026-10-26)
 
-1. **ADR-0008** (bounded stream → Source by snapshot): **Accepted**.
-2. **Names** (spec §1): accepted as proposed.
-3. **ADR-0003 §5 amended** (dated): `interval`/`timer` are cold, a clock per run; `Subject` parks
-   directly on the runtime.
-4. **ADR-0004 §2 note** (dated): the `Upstream` transducer stand-ins are within the rule for now;
-   switching to ChuiCore 0.0.1 is phase-5 item 1.
-5. **`bracketstream`'s `Interrupted` exit** under a concurrent stop (a producer still running) is
-   confirmed as documented.
-6. **R10** stays open (ChuiFrames' Task shim); the lead files the draft requests (export tiers,
-   CT IDs, the `chui-types.md` "Stream as a Source" amendment, the reproducer fix) after merging.
+1. TTFX uses a dependency-free workload guarded by `jl_generating_output`, not PrecompileTools,
+   with no ADR-0005 change.
+2. The S1/S2 time-target misses are accepted for phase 5. ADR-0009 records the after-numbers as
+   the budget, and ADR-0003 gets a dated "NOT met" note; its decision text is unchanged.
+3. `merge` over Vector sources about 1.6× slower is a known loss, after one bounded fix attempt.
+   - Cause: fast producers park and wake across threads on a full bounded queue.
+   - Rejected fix: waking producers only at half-drain, because it breaks `offer`'s documented
+     contract.
+   - A benchmark row `merge 4x2.5e5 Vector` covers it.
+4. No quiet window was available. The user decided (2026-10-26) that ADR-0009 cites the p5-ttfx
+   lane's TTFX figures, marked as measured under load 3.9–5.6 (indicative), and that the
+   regression-ceiling test stays the binding check. A quiet-machine TTFX re-run (1-min load
+   < 2) is required before the v0.1.0 release.
 
-## Phase 5, in order
+## Follow-ups (ADR-0009 lists them)
 
-1. **Switch `Upstream` to ChuiCore 0.0.1** (ADR-0004 §3, and the §2 note of 2026-10-20): the
-   typeclass and transducer stand-ins become `using ChuiCore: …`, instance methods get typed
-   styles (rule N5), contract tests start running.
-2. **ADR-0003's "fused operators cost what an iterator does" is NOT met** (ADR-0003 "Measured
-   2026-10-20"; `.lanes/evidence/bench-streams-bd8bcc0.txt`, loaded machine): fused map/filter
-   collect about 5.5× Base, `runfold` about 43× `foldl`, about 24 allocations / 15 KB per
-   1024-element chunk. Suspected causes, **UNVERIFIED** (not profiled): the untyped `runfold`
-   accumulator (`Ref{Any}`), the sink's growth without a size hint, per-chunk closures. A
-   pre-sized-buffer change was left out of this branch because it was not measured.
+- Fold `runfold` into the fused pipeline, so no output chunk is built. This is the remaining
+  S1/S2 gap.
+- The `merge` over Vector park/wake loss.
+- Fix the `_interpret` JET `report_package` reports, then drop the workload's `Ref{Any}(run)`
+  indirection (about 0.03 s).
+- `scan` cannot change its accumulator type: `scan(+, 0, fromiter([1, 2.5, 3]))` fails with a
+  convert error. This predates phase 5.
+- An emitted chunk can be up to 4× oversized, because `resize!` keeps the capacity.
+- `test/laws/test_planted.jl:61` is flaky on the LTS. It is probabilistic by design
+  (`test/laws/kits.jl:56-58`).
+- An ADR-0003 nit: "50–200 range parks" should say about 40–200.
+- From phase 4, still open: a non-leased pump's close cause is lost from `suppressed` (in
+  `src/stream/concurrent.jl`).
+
+## Phase 5 item still BLOCKED
+
+- **Switch `Upstream` to ChuiCore 0.0.1** (ADR-0004 §3, and the §2 note of 2026-10-20). It waits
+  for the lead to say ChuiCore 0.0.1 is registered.
 
 ## Checks NOT run, and why
 
-- Julia 1.14 (alpha) and 1.12: no runnable binaries locally.
-- `ci.jl contracts`: skips (waiting): `test/contracts/upstreams.toml` has no ChuiCore URL.
-- GitHub workflows: no remote from this lane.
-- Benchmarks: one run on a loaded machine (1.13.2, one thread); not on 1.10, not idle.
-- **Stale `origin/main` (the lead's).** `scripts/lane audit` and `dod.jl --base main` may compare
-  against `origin/main`; `dod.jl --base bd8bcc0` gives this branch's true diff.
+- The integrated TTFX medians (N = 7): there was no quiet window, so they wait for the
+  pre-v0.1.0 re-run (ADR-0009 follow-up 8). The `:slow` ceiling item passed on the integrated
+  tree ff93788 under load, at 0.29 s on 1.13 and 0.18 s on 1.10, against ceilings of 1.0 s and
+  0.75 s.
+- No time measurement on a quiet machine: all phase-5 time figures are labelled with their load
+  average (1-min 2.8–12).
+- Julia 1.14 (alpha), 1.12, and `pre`: no local binaries. The `test_perf.jl` rows cover 1.13 and
+  1.10; any other version gets a loose ceiling.
+- `ci.jl contracts`: it skips, because there is no ChuiCore URL yet.
+- GitHub workflows, including the coverage job, where `test_perf.jl` and the `:slow` TTFX item
+  skip themselves: no remote.
 
 ## Next action
 
-The lead's merge (the phase-4 ★ is answered, above). Then phase 5, in the order above: the
-ChuiCore 0.0.1 switch-over first, then the stream cost work.
+1. The lead merges `feat/phase5` into `main`. The user approved this, and accepted ADR-0009, on 2026-10-26.
+2. Then phase 6 (docs), or item 1 once ChuiCore 0.0.1 is registered.
+3. Before v0.1.0, run TTFX on a quiet machine:
+   `julia scripts/evidence.jl p5-ttfx-integrated -- sh -c 'uptime; julia --project=. benchmark/ttfx.jl --reps 7 --compilecache 3 && julia +lts --project=. benchmark/ttfx.jl --reps 7 --compilecache 3; uptime'`.

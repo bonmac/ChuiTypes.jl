@@ -84,3 +84,29 @@ SUITE["streams"]["merge 4x2.5e5"] = @benchmarkable stream_merge4($SN)
 SUITE["streams"]["prefetch 10^6"] = @benchmarkable stream_prefetch($SN)
 SUITE["streams"]["mergemap 100x10^4 mc16"] = @benchmarkable stream_mergemap(100, 10^4)
 SUITE["streams"]["fused map/filter/scan Vector 10^6"] = @benchmarkable stream_mapfilterscan($SV)
+
+# Phase 5 (spec D9): the sources alone, the indexed path over a Vector and the generic iteration
+# path (an iterator with a concrete eltype and state), and the per-bind allocations of the
+# interpreters. Allocation budgets are asserted in test/test_perf.jl; these track the time.
+source_vector(v) = run(runfold(+, 0, fromiter(v)))
+source_generic(v) = run(runfold(+, 0, fromiter(Iterators.take(v, length(v)))))
+SUITE["streams"]["fromiter Vector runfold 10^6"] = @benchmarkable source_vector($SV)
+SUITE["streams"]["fromiter generic iterator runfold 10^6"] = @benchmarkable source_generic($SV)
+# merge over Vector sources: a known phase-5 loss (fast pumps on the default thread fill the
+# queue and park once per chunk while the consumer runs on the interactive thread).
+const SV4 = [collect(1:(SN ÷ 4)) for _ in 1:4]
+stream_merge4_vector(vs) = run(runfold(+, 0, merge((fromiter(v) for v in vs)...)))
+SUITE["streams"]["merge 4x2.5e5 Vector"] = @benchmarkable stream_merge4_vector($SV4)
+
+"""
+    interpreter_allocs_per_bind() -> (effect, state)
+
+Allocations per bind of a warmed run of the 10^4-bind Effect and State chains above. Reported,
+not asserted (test/test_perf.jl asserts them).
+"""
+function interpreter_allocs_per_bind()
+    run(EFF), runstate(ST, 0)
+    e = @allocations run(EFF)
+    s = @allocations runstate(ST, 0)
+    return e / 10_000, s / 10_000
+end

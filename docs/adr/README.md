@@ -15,3 +15,4 @@ about 60–120 lines, titled as a claim. Keep this index current in the same com
 | 0006 | [Adapters to Task, Channel and exceptions go through owned handles and cancellers](0006-adapters-to-task-channel-and-exceptions.md) | Accepted (2026-10-20, user at the ChuiTypes phase-1 ★); obligation-2 contract ADR pending in the coordinator |
 | 0007 | [Reader, Writer and State are erased node trees with a declared parameter, run by a pure trampoline](0007-reader-writer-state-are-erased-node-trees.md) | Accepted (2026-10-20, user at the phase-3 ★) |
 | 0008 | [A bounded stream becomes a ChuiFrames Source by a snapshot taken at construction](0008-a-bounded-stream-becomes-a-source-by-snapshot.md) | Accepted (2026-10-20, user at the phase-4 ★) |
+| 0009 | [Performance budgets are enforced by tests, with every loss published](0009-performance-budgets-are-enforced-by-tests.md) | Accepted (2026-10-26, user, at the phase-5 merge) |

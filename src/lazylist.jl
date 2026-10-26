@@ -85,14 +85,11 @@ function _force!(c::_LazyCell{T}) where {T}
     if c.state == _UNFORCED
         c.state = _FORCING
         try
-            r = c.thunk()
+            r = c.thunk()                 # erased thunk: the one dynamic call per cell
             if r === nothing
                 c.state = _EMPTY
             else
-                x, rest = r
-                c.head = x
-                c.tail = (rest::LazyList{T}).cell
-                c.state = _CONS
+                _setcons!(c, r)           # a function barrier, specialised on the tuple's type
             end
         catch
             c.state = _UNFORCED
@@ -101,6 +98,14 @@ function _force!(c::_LazyCell{T}) where {T}
         c.thunk = nothing
     end
     return c
+end
+
+function _setcons!(c::_LazyCell{T}, r) where {T}
+    x, rest = r
+    c.head = x
+    c.tail = (rest::LazyList{T}).cell
+    c.state = _CONS
+    return nothing
 end
 
 # `nothing` if `l` is empty, else `(head, tail)`.

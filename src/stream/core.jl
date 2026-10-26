@@ -9,11 +9,12 @@ nothing; each run (with [`runcollect`](@ref), [`runfold`](@ref), [`runforeach`](
 [`runchunks`](@ref) or [`withbatches`](@ref)) starts it from the beginning and pulls it in
 **chunks** (about 1024 elements) that operators process with specialised loops.
 
-Cost, measured 2026-10-20 on Julia 1.13.2 (one thread, loaded machine; ADR-0003 "Measured"):
-a fused `map`/`filter` collect costs about 3.8 ns per element (about 5.5× the same Base code on a
-`Vector`), `runfold` about 5.3 ns per element (about 43× Base `foldl`), with about 24
-allocations (15 KB) per chunk; `merge`/`prefetch`/`mergemap` cost 3.4–7.1 ns per element.
-Iterator-level cost is a phase-5 target, not yet met.
+Cost, measured 2026-10-26 on Julia 1.13.2 (one thread, loaded machine; ADR-0003 "Measured"):
+`fromiter` over a `Vector`, folded, costs about 0.4 ns per element; a fused `map`/`filter`
+collect over a range about 2.1 ns (about 4× the same Base code), `runfold` after a `map` about
+1.8 ns (about 23× Base `foldl` over a `Vector`), with 3–6 allocations per chunk;
+`merge`/`prefetch`/`mergemap` cost 1–4 ns per element. Fused operators do not yet cost what an
+iterator does.
 
 `T` is **advisory**, as for [`Effect`](@ref): computed when the value is built, a supertype of
 every element, never asserted and never used to convert (`eltype(s)` returns it).
@@ -102,8 +103,10 @@ function _runnested(node::_ENode, ctx::_Ctx)
     return x
 end
 
-# The run driver: open, pull every chunk into `consume!` (which may throw), close.
-function _drive(consume!, src, ctx::_Ctx)
+# The run driver: open, pull every chunk into `consume!` (which may throw), close. `consume!` is
+# not specialised on: it stays boxed, so the dynamic call on each (untyped) chunk does not box
+# the closure again per chunk.
+function _drive(@nospecialize(consume!), src, ctx::_Ctx)
     p = _sopen(src, ctx)
     out = try
         ScopedValues.with(_CTX => ctx) do
@@ -128,96 +131,76 @@ end
 
 # ---- The widening sink ------------------------------------------------------------------------------
 # A chunk under construction: a `Vector{T}` of the advisory `T` while every element `isa T`, else
-# a `Vector{Any}` narrowed when emitted (never `convert`, ADR-0002 §1).
+# a `Vector{Any}` narrowed when emitted (never `convert`, ADR-0002 §1). The chunk so far is the
+# first `n` slots of the buffer `v`, where `n` lives in the accumulator `_SinkAcc` that the
+# pipeline folds through, so the in-chunk loop keeps it in a register (a count or a `push!`
+# through the mutable sink is re-read from memory per element: about 2.5x the cost). An emitted
+# vector is never touched again (it belongs to the chunk): `_emit!` starts a fresh buffer of the
+# length of the chunk it emitted (so a fused chunk does not regrow); a chunk that fills less
+# than a quarter of its buffer is copied out instead and the buffer kept (a sparse `filter`
+# hands out no oversized vectors).
 
 mutable struct _Sink{T}
     v::Vector{T}
     wide::Union{Nothing, Vector{Any}}
 end
-_Sink{T}() where {T} = _Sink{T}(T[], nothing)
+_Sink{T}(cap::Int = 0) where {T} = _Sink{T}(Vector{T}(undef, cap), nothing)
 
-@inline function _sinkpush(s::_Sink{T}, x) where {T}
-    if s.wide === nothing && x isa T
-        push!(s.v, x)
-    else
-        _widenpush!(s, x)
-    end
-    return s
+# (One pointer and an `Int`: an accumulator with two pointers is not kept in registers by the
+# in-chunk loop, measured about 8x slower through `filter`.)
+struct _SinkAcc{T}
+    s::_Sink{T}
+    n::Int                  # filled slots of `s.v`; -1 once `s.wide` holds the chunk
 end
-@noinline function _widenpush!(s::_Sink, x)
+_SinkAcc(s::_Sink{T}) where {T} = _SinkAcc{T}(s, 0)
+
+@inline function _sinkpush(a::_SinkAcc{T}, x) where {T}
+    s = a.s
+    if a.n >= 0 && x isa T
+        n = a.n + 1
+        v = s.v
+        n > length(v) && _sinkgrow!(v, n)
+        @inbounds v[n] = x
+        return _SinkAcc{T}(s, n)
+    end
+    _widenpush!(s, max(a.n, 0), x)
+    return _SinkAcc{T}(s, -1)
+end
+@noinline function _sinkgrow!(v::Vector, n::Int)
+    resize!(v, max(2 * length(v), n, 16))      # in place: `v` stays `s.v`
+    return nothing
+end
+@noinline function _widenpush!(s::_Sink, n::Int, x)
     if s.wide === nothing
-        s.wide = Vector{Any}(s.v)
-        empty!(s.v)
+        w = Vector{Any}(undef, n)
+        copyto!(w, 1, s.v, 1, n)
+        s.wide = w
     end
     push!(something(s.wide), x)
     return nothing
 end
-_sinkempty(s::_Sink) = isempty(s.v) && (s.wide === nothing || isempty(something(s.wide)))
-function _emit!(s::_Sink{T}) where {T}
-    if s.wide === nothing
+_sinkempty(a::_SinkAcc) = a.n == 0 || (a.n < 0 && isempty(something(a.s.wide)))
+# Hand out the chunk; the accumulator continues as `_SinkAcc(a.s)` (empty).
+function _emit!(a::_SinkAcc{T}) where {T}
+    s = a.s
+    if a.n >= 0
         v = s.v
-        s.v = T[]
+        n = a.n
+        4 * n < length(v) && return v[1:n]          # sparse: copy out, keep the buffer
+        resize!(v, n)
+        s.v = Vector{T}(undef, max(n, 1))
         return v
     end
     w = something(s.wide)
     s.wide = nothing
-    return map(identity, w)
+    return map(identity, w)          # `s.v` was never handed out: it is reused
 end
+# The chunk of a sink used for exactly one chunk (no replacement buffer).
+_take!(a::_SinkAcc) = a.n >= 0 ? resize!(a.s.v, a.n) : map(identity, something(a.s.wide))
 
 # ---- Simple sources -----------------------------------------------------------------------------
 
-struct _IterSrc{I}
-    itr::I
-    chunksize::Int
-end
-mutable struct _IterP{I} <: _Puller
-    itr::I
-    chunksize::Int
-    started::Bool
-    state::Any
-    done::Bool
-end
-_open(s::_IterSrc, ::_Ctx) = _IterP(s.itr, s.chunksize, false, nothing, false)
-function _pull!(p::_IterP, ::_Ctx)
-    p.done && return nothing
-    y = p.started ? iterate(p.itr, p.state) : iterate(p.itr)
-    p.started = true
-    y === nothing && (p.done = true; return nothing)
-    chunk, st, more = _fillchunk(p.itr, y, p.chunksize, eltype(p.itr))
-    p.state = st
-    more || (p.done = true)
-    return chunk
-end
-_close!(::_IterP, ::_Ctx) = nothing
-
-# The in-chunk loop, specialised on the iterator and its state (the function barrier).
-function _fillchunk(itr, y, n::Int, ::Type{T}) where {T}
-    s = _Sink{T}()
-    sizehint!(s.v, n)
-    k = 0
-    while true
-        x, st = y
-        _sinkpush(s, x)
-        k += 1
-        if k == n
-            return _emit!(s), st, true
-        end
-        y = iterate(itr, st)
-        y === nothing && return _emit!(s), st, false
-    end
-    return
-end
-
-"""
-    fromiter(itr; chunksize = 1024) -> Stream{eltype(itr)}
-
-The cold stream of `itr`'s elements, in chunks of `chunksize`. Every run iterates `itr` again
-from the start; an unbounded iterator gives an unbounded stream (bound it with `take`).
-"""
-function fromiter(itr; chunksize::Integer = _CHUNK)
-    chunksize >= 1 || throw(ArgumentError("chunksize must be at least 1, got $chunksize"))
-    return _stream(eltype(itr), _IterSrc(itr, Int(chunksize)))
-end
+include("sources.jl")             # fromiter: the indexed and the generic iteration sources
 
 struct _EmptySrc end
 struct _EndP <: _Puller end
@@ -357,16 +340,43 @@ end
 
 The effect that runs `s` and succeeds with `foldl(op, elements; init)`.
 """
-function runfold(op, init, s::Stream)
+function runfold(op, init, s::Stream{T}) where {T}
     return _runeffect(
         Any, ctx -> begin
-            acc = Ref{Any}(init)
-            out = _drive(ch -> (acc[] = _foldchunk(op, acc[], ch)), s.src, ctx)
-            out[1] ? (true, acc[]) : out
+            f = Ref{Any}(_newfold(op, init, T))
+            out = _drive(ch -> _foldstep!(f, ch), s.src, ctx)
+            out[1] ? (true, f[].acc) : out
         end
     )
 end
-_foldchunk(op, acc, chunk) = foldl(op, chunk; init = acc)
+
+# The fold's state. `A` is `typeof(init)` when inference says `op(::A, ::T)` returns exactly that
+# concrete type, else `Any`: then a chunk's fold result is stored unboxed (spec D5).
+mutable struct _Fold{F, A}
+    op::F
+    acc::A
+end
+function _newfold(op::F, init::A, ::Type{T}) where {F, A, T}
+    typed = isconcretetype(A) && Base.promote_op(op, A, T) === A
+    return typed ? _Fold{F, A}(op, init) : _Fold{F, Any}(op, init)
+end
+struct _Widened
+    acc::Any
+end
+# One chunk folded into `f.acc` (the one dynamic call per chunk: on the heap `_Fold` and the boxed
+# chunk). A result that is not an `A` (inference was too narrow) is handed back, never converted.
+function _foldinto!(f::_Fold{F, A}, chunk) where {F, A}
+    a = foldl(f.op, chunk; init = f.acc)
+    a isa A || return _Widened(a)
+    f.acc = a
+    return nothing
+end
+function _foldstep!(f::Ref{Any}, chunk)
+    w = _foldinto!(f[], chunk)
+    w === nothing && return nothing
+    f[] = _Fold{Any, Any}(f[].op, (w::_Widened).acc)
+    return nothing
+end
 
 """
     runforeach(f, s::Stream) -> Effect{Any,Nothing}
