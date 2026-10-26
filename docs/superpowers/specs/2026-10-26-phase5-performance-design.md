@@ -88,8 +88,8 @@ Confirmed causes, by site (08e9468):
   per-chunk `_Ctx` allocation (fused.jl:53) and the `_drive` closure allocation (core.jl:115)
   are removed or, if they cannot be, explained with the profiler line in the report.
 - D4a. **File size.** `ratchets.toml` caps `src/*.jl` (`*` matches `/`) at 600 lines; core.jl
-  has 466. If D2/D3 push it past ~560, put the sources in a new `src/stream/sources.jl`
-  **included from `src/stream/core.jl`** (lane `p5-perf` does not edit `src/ChuiTypes.jl`).
+  has 466. If D2/D3 push it past ~560, put the sources in a new file (sources.jl) under
+  `src/stream/`, **included from `src/stream/core.jl`** (lane `p5-perf` does not edit `src/ChuiTypes.jl`).
 - D5. **`runfold`**: avoid the double box per chunk (typed accumulator when `op`'s return type is
   concrete and equals `typeof(init)`, else today's `Ref{Any}`). Only if measured to help.
 - D6. **LazyList** JET sites (lazylist.jl:88/92/93): fix if a local change removes them without a

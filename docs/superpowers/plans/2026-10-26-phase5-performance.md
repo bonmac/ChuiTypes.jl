@@ -9,7 +9,7 @@ from `feat/phase5` (`--base feat/phase5`) and merge back into it; the lead merge
 | Lane | Branch | Owns (exact `--owns` value) |
 |---|---|---|
 | `p5-perf` | `feat/p5-perf` | `src/stream/*,src/lazylist.jl,src/effect/*,src/state.jl,src/rws.jl,benchmark/benchmarks.jl,benchmark/Project.toml,test/test_perf.jl,test/test_stream*.jl,test/test_lazylist.jl,test/laws/test_laws_stream.jl,docs/adr/0003-*` |
-| `p5-ttfx` | `feat/p5-ttfx` | `src/ChuiTypes.jl,src/precompile.jl,test/test_precompile.jl,benchmark/ttfx.jl` |
+| `p5-ttfx` | `feat/p5-ttfx` | `src/ChuiTypes.jl`, `src/precompile.jl`, `test/test_precompile.jl`, `benchmark/ttfx.jl` (comma-joined in the `--owns` value) |
 | `phase5` (integration) | `feat/phase5` | `docs/superpowers/specs/2026-10-26-phase5-*,docs/superpowers/plans/2026-10-26-phase5-*,HANDOFF.md,docs/adr/0009-*,docs/adr/README.md` |
 
 `changelog.d/<lane>.md` is added to each lane's scope by `scripts/lane`. `src/effect/*`,
