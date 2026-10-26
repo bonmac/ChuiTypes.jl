@@ -47,13 +47,20 @@ elements; `p5-perf-after-3c4e32e.txt`, `p5-perf-after-allocs-lts-3c4e32e.txt`, 1
 
 TTFX rows: the workload total from `benchmark/ttfx.jl`, median of 7 fresh processes.
 
-| Julia | before | p5-ttfx lane | integrated `feat/phase5` | ceiling | compilecache before → after |
-|---|---|---|---|---|---|
-| 1.13.2 | 1.769 s | 0.283 s | PENDING: quiet-window re-measure (1-min load < 2), scheduled by the lead | 1.0 s | 0.651 → 1.983 s |
-| 1.10.12 | 1.296 s | 0.178 s | PENDING (same) | 0.75 s | 0.711 → 2.007 s |
+| Julia | before | after (p5-ttfx lane) | ceiling (binding) | compilecache before → after |
+|---|---|---|---|---|
+| 1.13.2 | 1.769 s | 0.283 s | 1.0 s | 0.651 → 1.983 s |
+| 1.10.12 | 1.296 s | 0.178 s | 0.75 s | 0.711 → 2.007 s |
 
-Before: `p5-ttfx-before-339c806.txt` (1-min load 4.9–5.6, loaded); lane: `p5-ttfx-after-4f44bfd.txt`
-(1-min load 3.9–4.3, loaded). Integrated: kind `p5-ttfx-integrated` (p5-perf changed what it compiles).
+Measured under load, 1-min 3.9–5.6, so these figures are **indicative**. Before:
+`p5-ttfx-before-339c806.txt` (1-min 4.9–5.6). After: `p5-ttfx-after-4f44bfd.txt` (1-min
+3.9–4.3).
+
+No quiet window (1-min load < 2) was available on 2026-10-26, so the integrated branch has no
+N = 7 re-measure. The user decided (2026-10-26) to cite the lane figures. The binding check is
+the regression ceiling in `test/test_precompile.jl`. On the integrated tree ff93788 that item
+measured a minimum of 3 of 0.2949 s on 1.13.2 and 0.1821 s on 1.10.12, also under load
+(`tests-ff93788.txt`, `tests-lts-ff93788.txt`).
 
 Time rows, 1.13.2, ns per element or bind, median / min: before `p5-perf-before-suite-4ec7894.txt`
 (1-min load 5.1–6.3), after `p5-perf-after-suite-673a0be.txt` (2.8–3.5).
@@ -109,6 +116,8 @@ Time rows, 1.13.2, ns per element or bind, median / min: before `p5-perf-before-
 5. An emitted chunk can be up to 4× oversized: `resize!` keeps capacity (`_emit!`, `core.jl` ~188).
 6. `test/laws/test_planted.jl:61` is flaky on the LTS, probabilistic by design (`test/laws/kits.jl:56-58`).
 7. ADR-0003 nit: "50–200 range parks" should read about 40–200 (evidence: 37–194).
+8. (2026-10-26) The v0.1.0 release requires a quiet-machine TTFX re-run first (1-min load < 2,
+   `benchmark/ttfx.jl`, N = 7, both versions). That run replaces the indicative TTFX rows above.
 
 ## Verification
 
@@ -117,7 +126,8 @@ ranges, `ci.jl test -- all` passes on both versions, with clean trees: 17283 pas
 (`tests-ff93788.txt`) and 17268 pass on 1.10.12 (`tests-lts-ff93788.txt`). Those runs include
 the budget item, with the same mode-A counts, and the `:slow` TTFX ceiling. The ceiling item's
 minimum of 3 was 0.2949 s on 1.13.2 and 0.1821 s on 1.10.12, on a loaded machine (no load
-figure was recorded). PENDING: integrated TTFX medians (quiet-window re-measure).
+figure was recorded). The integrated N = 7 TTFX medians were not measured: there was no quiet
+window, and follow-up 8 covers them.
 
 ## Revisit when
 

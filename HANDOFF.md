@@ -45,9 +45,10 @@ every checkpoint. Keep it short; history lives in git and in ADRs.
 
 | Lane | Branch | Status |
 |---|---|---|
-| `phase5` | `feat/phase5` | integration: ADR-0009 Proposed; integrated TTFX re-measure PENDING (quiet window, scheduled by the lead); final review next |
-| `p5-perf` | `feat/p5-perf` | merged into `feat/phase5`; reviewer FINAL APPROVE (twice); worktree can be removed |
-| `p5-ttfx` | `feat/p5-ttfx` | merged into `feat/phase5`; reviewer FINAL APPROVE; worktree can be removed |
+| `phase5` | `feat/phase5` | integration; reviewer FINAL APPROVE on `main...feat/phase5`; ready for the lead's merge. ADR-0009 stays Proposed until the user accepts it at the merge |
+
+The lanes `p5-perf` and `p5-ttfx` are merged. Their worktrees were removed on 2026-10-26; the
+branches are kept. Their scratch is in the main checkout's `.lanes/archive/`.
 
 ## Decisions taken (the lead, 2026-10-26)
 
@@ -60,7 +61,10 @@ every checkpoint. Keep it short; history lives in git and in ADRs.
    - Rejected fix: waking producers only at half-drain, because it breaks `offer`'s documented
      contract.
    - A benchmark row `merge 4x2.5e5 Vector` covers it.
-4. The integrated TTFX figures come from a quiet window (1-min load < 2) that the lead schedules.
+4. No quiet window was available. The user decided (2026-10-26) that ADR-0009 cites the p5-ttfx
+   lane's TTFX figures, marked as measured under load 3.9–5.6 (indicative), and that the
+   regression-ceiling test stays the binding check. A quiet-machine TTFX re-run (1-min load
+   < 2) is required before the v0.1.0 release.
 
 ## Follow-ups (ADR-0009 lists them)
 
@@ -85,9 +89,10 @@ every checkpoint. Keep it short; history lives in git and in ADRs.
 
 ## Checks NOT run, and why
 
-- The integrated TTFX medians: deferred to the lead's quiet window. The `:slow` ceiling item did
-  pass on the integrated head under load: 0.33 s on 1.13 and 0.19 s on 1.10, against ceilings of
-  1.0 and 0.75 s.
+- The integrated TTFX medians (N = 7): there was no quiet window, so they wait for the
+  pre-v0.1.0 re-run (ADR-0009 follow-up 8). The `:slow` ceiling item passed on the integrated
+  tree ff93788 under load, at 0.29 s on 1.13 and 0.18 s on 1.10, against ceilings of 1.0 s and
+  0.75 s.
 - No time measurement on a quiet machine: all phase-5 time figures are labelled with their load
   average (1-min 2.8–12).
 - Julia 1.14 (alpha), 1.12, and `pre`: no local binaries. The `test_perf.jl` rows cover 1.13 and
@@ -98,7 +103,7 @@ every checkpoint. Keep it short; history lives in git and in ADRs.
 
 ## Next action
 
-1. The lead's quiet window: run the one-shot TTFX command, then fill ADR-0009's PENDING rows.
-2. The final reviewer on `main...feat/phase5`.
-3. The lead merges into `main`.
-4. Then phase 6 (docs), or item 1 once ChuiCore 0.0.1 is registered.
+1. The lead merges `feat/phase5` into `main`, and the user accepts ADR-0009 at that merge.
+2. Then phase 6 (docs), or item 1 once ChuiCore 0.0.1 is registered.
+3. Before v0.1.0, run TTFX on a quiet machine:
+   `julia scripts/evidence.jl p5-ttfx-integrated -- sh -c 'uptime; julia --project=. benchmark/ttfx.jl --reps 7 --compilecache 3 && julia +lts --project=. benchmark/ttfx.jl --reps 7 --compilecache 3; uptime'`.
