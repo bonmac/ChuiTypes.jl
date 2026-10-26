@@ -104,5 +104,6 @@ include("stream/hot.jl")
 include("stream/adapters.jl")
 include("stream/marbles.jl")
 include("stream/futures.jl")
+include("precompile.jl")             # last: the workload needs every method above
 
 end # module ChuiTypes
