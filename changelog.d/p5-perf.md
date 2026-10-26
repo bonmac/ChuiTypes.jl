@@ -20,3 +20,6 @@
   iterator) and the interpreters' allocations per bind.
 - Internal, no public API change: `fromiter`'s docstring adds that a `Vector` is read as it is at
   each chunk (as before).
+- `fromiter` over a range whose length is not an `Int` (`0:typemax(Int)`, `typemin(Int):typemax(Int)`,
+  `BigInt` ranges) iterates it again instead of giving an empty stream or throwing (found before
+  release by the phase-5 integration review).
