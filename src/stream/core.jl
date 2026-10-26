@@ -174,57 +174,7 @@ _take!(s::_Sink) = s.wide === nothing ? s.v : map(identity, something(s.wide))
 
 # ---- Simple sources -----------------------------------------------------------------------------
 
-struct _IterSrc{I}
-    itr::I
-    chunksize::Int
-end
-mutable struct _IterP{I} <: _Puller
-    itr::I
-    chunksize::Int
-    started::Bool
-    state::Any
-    done::Bool
-end
-_open(s::_IterSrc, ::_Ctx) = _IterP(s.itr, s.chunksize, false, nothing, false)
-function _pull!(p::_IterP, ::_Ctx)
-    p.done && return nothing
-    y = p.started ? iterate(p.itr, p.state) : iterate(p.itr)
-    p.started = true
-    y === nothing && (p.done = true; return nothing)
-    chunk, st, more = _fillchunk(p.itr, y, p.chunksize, eltype(p.itr))
-    p.state = st
-    more || (p.done = true)
-    return chunk
-end
-_close!(::_IterP, ::_Ctx) = nothing
-
-# The in-chunk loop, specialised on the iterator and its state (the function barrier).
-function _fillchunk(itr, y, n::Int, ::Type{T}) where {T}
-    s = _Sink{T}(n)
-    k = 0
-    while true
-        x, st = y
-        _sinkpush(s, x)
-        k += 1
-        if k == n
-            return _take!(s), st, true
-        end
-        y = iterate(itr, st)
-        y === nothing && return _take!(s), st, false
-    end
-    return
-end
-
-"""
-    fromiter(itr; chunksize = 1024) -> Stream{eltype(itr)}
-
-The cold stream of `itr`'s elements, in chunks of `chunksize`. Every run iterates `itr` again
-from the start; an unbounded iterator gives an unbounded stream (bound it with `take`).
-"""
-function fromiter(itr; chunksize::Integer = _CHUNK)
-    chunksize >= 1 || throw(ArgumentError("chunksize must be at least 1, got $chunksize"))
-    return _stream(eltype(itr), _IterSrc(itr, Int(chunksize)))
-end
+include("sources.jl")             # fromiter: the indexed and the generic iteration sources
 
 struct _EmptySrc end
 struct _EndP <: _Puller end
