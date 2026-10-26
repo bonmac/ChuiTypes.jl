@@ -4,9 +4,12 @@
   the pipeline accumulator; the fused puller, the run driver and `runfold` no longer box per
   chunk (`runfold` keeps a typed accumulator when `op` returns `typeof(init)`, never converting).
   On 1.13.2 a folded `fromiter(::Vector)` went from 2.50 to 0.36 ns per element and a fused
-  `map`/`runfold` from 4.90 to 1.83; allocations per 1024-element chunk from 13–25 to 3–6
-  (loaded machine; ADR-0003 "Measured 2026-10-26"). The fused-operator targets (2.5× and 10×
-  Base) are not met.
+  `map`/`runfold` from 4.90 to 1.83; allocations per 1024-element chunk from 13–25 to 3.1–6.1
+  in a plain process, 3.77–6.93 under `julia scripts/ci.jl test` (`--check-bounds=yes`, the
+  values `test/test_perf.jl` budgets) (loaded machine; ADR-0003 "Measured 2026-10-26"). The
+  fused-operator targets (2.5× and 10× Base) are not met. Known loss: `merge` over `Vector`
+  sources is slower than before (median about 2.2 → 3.6 ns per element; benchmark row
+  `merge 4x2.5e5 Vector`).
 - `Effect` binds allocate 1.95 instead of 7.96 times each (about 42 instead of 62 ns): the
   interpreter no longer boxes two captured variables on every step.
 - `LazyList` forcing goes through a function barrier: a map/chain/fold over 1000 elements is

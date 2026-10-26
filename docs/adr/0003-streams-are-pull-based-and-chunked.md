@@ -121,13 +121,24 @@ They run on the one runtime (ADR-0002). Facts from
     accumulator): `fromiter` over a `Vector` folded costs 0.36 ns per element (2.50 before);
     fused `map`/`filter` collect over a range 2.11 (3.86 before), about 3.9× the Base
     equivalent (0.54); fused `map` then `runfold` 1.83 (4.90 before), about 23× Base `foldl`
-    over a `Vector` (0.081, SIMD). Allocations per 1024-element chunk: 3.1 for a source
-    folded, 6.1 for a fused pipeline (13.1 and 21–25 before). The per-element cost left is
-    the scalar in-chunk loop through the transducers (about 0.9 ns) and the range copy (about
-    0.8 ns, kept checked: an unchecked one made `merge` 3× slower). Evidence (medians):
-    `.lanes/evidence/p5-perf-before-4ec7894.txt`, `p5-perf-after-3c4e32e.txt`,
-    `p5-perf-micro-3c4e32e.txt` (the in-chunk loop), `p5-perf-merge-4ec7894.txt`; allocations
-    are budgeted in `test/test_perf.jl`.
+    over a `Vector` (0.081, SIMD). Allocations per 1024-element chunk, in a plain process
+    (10^6 elements, no bounds-check flag; `p5-perf-after-3c4e32e.txt`): 3.1 for a source
+    folded, 6.1 for a fused pipeline (13.1 and 21–25 before); under `julia scripts/ci.jl test`
+    (`Pkg.test`, `--check-bounds=yes`, 2^17 elements; `tests-673a0be.txt`, the values
+    `test/test_perf.jl` budgets): 3.77 and 6.88–6.93. The per-element cost left is the scalar
+    in-chunk loop through the transducers (about 0.9 ns) and the range copy (about 0.8 ns,
+    kept checked: an unchecked one made `merge` 3× slower). Known loss: `merge` over `Vector`
+    sources, median 2.2 → 3.6 ns per element (min 1.3 → 1.2; load average 8–12): its pumps run
+    on the default thread and the consumer on the interactive one (1.13), and fast pumps keep
+    the queue full and park once per chunk (about 800 parks per run against 50–200 for range
+    pumps). Evidence (medians): `.lanes/evidence/p5-perf-before-4ec7894.txt`,
+    `p5-perf-after-3c4e32e.txt`, `p5-perf-micro-5e13f87.txt` (the in-chunk loop),
+    `p5-perf-merge-5e13f87.txt`, `p5-perf-merge-cause-673a0be.txt`.
+  - **Note 2026-10-26, after phase 5: the claim "fused operators cost what an iterator does" is
+    still NOT met.** On a quieter run (load average 3.2), a fused `map`/`filter` collect costs
+    about 3.8× the Base equivalent (1.97 vs 0.52 ns per element) and `map` then `runfold`
+    about 22× Base `foldl` over a `Vector` (1.68 vs 0.076). Evidence:
+    `.lanes/evidence/p5-perf-after-quiet-673a0be.txt` (before: `p5-perf-before-quiet-673a0be.txt`).
 - Streams come after the runtime's `Queue`, `Scope`, clock and test mode (phase 3), so they land
   in phase 4.
 - A chunk adds latency for sparse sources; partial chunks bound it, and phase 4 tests this.
