@@ -16,6 +16,8 @@ mutable struct _IterP{I, S} <: _Puller
     started::Bool
     state::Union{Nothing, S}
     done::Bool
+    # Only the parametric constructor: the default outer one has an unbound `S` (Aqua, on 1.10).
+    _IterP{I, S}(itr, chunksize, started, state, done) where {I, S} = new{I, S}(itr, chunksize, started, state, done)
 end
 
 # The state type of a `Union{Nothing, Tuple{X, S}}` (what `iterate` returns), else `Any`.
