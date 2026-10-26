@@ -100,14 +100,18 @@ function _copychunk(a::AbstractVector{T}, i::Int, n::Int) where {T}
     v = Vector{T}(undef, n)
     if isbitstype(T) && !(a isa AbstractRange)
         copyto!(v, 1, a, i, n)
-    elseif a isa SubArray            # its parent may have shrunk: keep the checked read
+    elseif a isa Vector              # `i:i+n-1` is within the `lastindex` read by this pull
+        @inbounds for k in 1:n
+            v[k] = a[i + k - 1]
+        end
+    else
+        # A view's parent may have shrunk: keep the checked read. Ranges keep it too: an unchecked
+        # (vectorised) range copy is 2.6x faster here but made `merge` over range sources about
+        # 3x slower per element (median; faster pumps, cause not established; measured
+        # 2026-10-26, evidence p5-perf-merge). Revisit with merge's scheduling.
         for k in 1:n
             x = a[i + k - 1]
             @inbounds v[k] = x
-        end
-    else                             # `i:i+n-1` is within the `lastindex` read by this pull
-        @inbounds for k in 1:n
-            v[k] = a[i + k - 1]
         end
     end
     return v
