@@ -371,7 +371,7 @@ function _foldinto!(f::_Fold{F, A}, chunk) where {F, A}
     f.acc = a
     return nothing
 end
-function _foldstep!(f::Base.RefValue{Any}, chunk)
+function _foldstep!(f::Ref{Any}, chunk)
     w = _foldinto!(f[], chunk)
     w === nothing && return nothing
     f[] = _Fold{Any, Any}(f[].op, (w::_Widened).acc)
