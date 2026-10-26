@@ -72,6 +72,29 @@ end
     @test [run(runcollect(x)) for x in w] == [[1, 2], [3, 4], [5]]
 end
 
+@testitem "Stream: the fused sink widens per chunk and never touches an emitted chunk (phase 5)" tags = [:unit] begin
+    using ChuiTypes
+    struct Liar2 end
+    Base.iterate(::Liar2, i = 1) = i > 7 ? nothing : (i == 3 ? 2.5 : i, i + 1)
+    Base.eltype(::Type{Liar2}) = Int
+    Base.IteratorSize(::Type{Liar2}) = Base.SizeUnknown()
+    # chunk 2 (3:4) widens; chunk 3 is back on the typed fast path
+    cs = run(runchunks(map(identity, fromiter(Liar2(); chunksize = 2))))
+    @test isequal(cs, [[1, 2], [2.5, 4], [5, 6], [7]])
+    @test eltype(cs[1]) === Int && eltype(cs[3]) === Int && eltype(cs[2]) === Real   # never converted
+    @test cs[2][1] isa Float64 && cs[2][2] isa Int
+    @test isequal(run(runcollect(filter(x -> x != 4, map(identity, fromiter(Liar2()))))), [1, 2, 2.5, 5, 6, 7])
+    # chunks are owned: later chunks never overwrite earlier ones (sparse, dense and widened)
+    for s in (filter(x -> x % 97 == 0, fromiter(1:5000)), map(x -> 2x, fromiter(1:5000; chunksize = 100)),
+              Iterators.take(scan(+, 0, fromiter(1:5000)), 4321))
+        chunks = run(runchunks(s))
+        @test reduce(vcat, chunks) == run(runcollect(s))
+        @test allunique(map(objectid, chunks))
+    end
+    sparse = run(runchunks(filter(x -> x % 1000 == 1, fromiter(1:5000))))
+    @test sparse == [[1, 1001], [2001], [3001], [4001]]      # one output chunk per source chunk
+end
+
 @testitem "Stream: take closes the upstream at once (releases run, nothing more is pulled)" tags = [:unit] setup = [StreamHelpers] begin
     using ChuiTypes
     log = Symbol[]

@@ -13,11 +13,12 @@ end
 _fuse(::Type{T}, s::Stream, xf::U.Transducer) where {T} =
     s.src isa _Fused ? _stream(T, _Fused(s.src.src, U.opcompose(s.src.xf, xf), T)) : _stream(T, _Fused(s.src, xf, T))
 
-mutable struct _FusedP{RF, A, T} <: _Puller
+# `acc` is the pipeline's accumulator: a `_SinkAcc` (the sink and its fill count), wrapped in a
+# `U._State` per stateful layer.
+mutable struct _FusedP{RF, A} <: _Puller
     up::Any
     rf::RF
     acc::A
-    sink::_Sink{T}
     done::Bool
     pending::Union{Nothing, Cause}
     # The last `ctx` pulled with, already boxed: handing it to the dynamic `_spull!(up, …)` call
@@ -31,10 +32,15 @@ function _open(f::_Fused, ctx::_Ctx)
 end
 # The sink's fast path is the advisory output type; widening covers anything else.
 function _openfused(rf, up, ::Type{T}) where {T}
-    sink = _Sink{T}()
-    acc = U.start(rf, sink)
-    return _FusedP{typeof(rf), typeof(acc), T}(up, rf, acc, sink, false, nothing, nothing)
+    acc = U.start(rf, _SinkAcc(_Sink{T}()))
+    return _FusedP{typeof(rf), typeof(acc)}(up, rf, acc, false, nothing, nothing)
 end
+
+# The sink accumulator inside a pipeline accumulator, and the accumulator with an emptied sink.
+_bottom(a::_SinkAcc) = a
+_bottom(a::U._State) = _bottom(a.acc)
+_emptied(a::_SinkAcc) = _SinkAcc(a.s)
+_emptied(a::U._State) = U._State(a.state, _emptied(a.acc))
 
 # The in-chunk loop (the function barrier: specialised on `rf`, `acc` and the chunk type).
 function _runchunk(rf::RF, acc::A, chunk) where {RF, A}
@@ -48,15 +54,12 @@ end
 
 # One chunk through the pipeline: the one dynamic call per chunk, on the puller (already on the
 # heap) and the chunk (already boxed), so `rf` and `acc` are never boxed. Stores the new
-# accumulator; on `Reduced`, completes and returns `true`.
+# accumulator and returns `nothing`; on `Reduced`, completes and returns the final `_SinkAcc`.
 function _fusedchunk!(p::_FusedP, chunk)
     a = _runchunk(p.rf, p.acc, chunk)
-    if a isa U.Reduced
-        U.complete(p.rf, a.value)
-        return true
-    end
+    a isa U.Reduced && return _bottom(U.complete(p.rf, a.value))
     p.acc = a
-    return false
+    return nothing
 end
 
 function _pull!(p::_FusedP, ctx::_Ctx)
@@ -73,22 +76,28 @@ function _pull!(p::_FusedP, ctx::_Ctx)
         r = _spull!(p.up, p.ctxbox)     # checks the cancel state: an empty output re-pulls (review B1)
         if r === nothing
             p.done = true
-            U.complete(p.rf, p.acc)
-            _sinkempty(p.sink) && return nothing
-            return _emit!(p.sink)
+            last = _bottom(U.complete(p.rf, p.acc))
+            _sinkempty(last) && return nothing
+            return _emit!(last)
         elseif r isa Cause
             p.done = true
             return r
         end
-        if _fusedchunk!(p, r)::Bool
+        last = _fusedchunk!(p, r)
+        if last !== nothing
             p.done = true
             # stop the upstream at once: its fibers end and its releases run now
             p.pending = _sclose!(p.up, ctx)
             p.up = _EndP()
-            _sinkempty(p.sink) && return _pull!(p, ctx)
-            return _emit!(p.sink)
+            _sinkempty(last) && return _pull!(p, ctx)
+            return _emit!(last)
         end
-        _sinkempty(p.sink) || return _emit!(p.sink)
+        b = _bottom(p.acc)
+        if !_sinkempty(b)
+            chunk = _emit!(b)
+            p.acc = _emptied(p.acc)
+            return chunk
+        end
     end
     return
 end

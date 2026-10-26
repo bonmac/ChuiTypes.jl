@@ -49,17 +49,17 @@ _close!(::_IterP, ::_Ctx) = nothing
 
 # The in-chunk loop, specialised on the iterator and its state (the function barrier).
 function _fillchunk(itr, y, n::Int, ::Type{T}) where {T}
-    s = _Sink{T}(n)
+    a = _SinkAcc(_Sink{T}(n))
     k = 0
     while true
         x, st = y
-        _sinkpush(s, x)
+        a = _sinkpush(a, x)
         k += 1
         if k == n
-            return _take!(s), st, true
+            return _take!(a), st, true
         end
         y = iterate(itr, st)
-        y === nothing && return _take!(s), st, false
+        y === nothing && return _take!(a), st, false
     end
     return
 end
@@ -100,10 +100,14 @@ function _copychunk(a::AbstractVector{T}, i::Int, n::Int) where {T}
     v = Vector{T}(undef, n)
     if isbitstype(T) && !(a isa AbstractRange)
         copyto!(v, 1, a, i, n)
-    else
+    elseif a isa SubArray            # its parent may have shrunk: keep the checked read
         for k in 1:n
             x = a[i + k - 1]
             @inbounds v[k] = x
+        end
+    else                             # `i:i+n-1` is within the `lastindex` read by this pull
+        @inbounds for k in 1:n
+            v[k] = a[i + k - 1]
         end
     end
     return v

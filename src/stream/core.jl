@@ -130,49 +130,72 @@ end
 
 # ---- The widening sink ------------------------------------------------------------------------------
 # A chunk under construction: a `Vector{T}` of the advisory `T` while every element `isa T`, else
-# a `Vector{Any}` narrowed when emitted (never `convert`, ADR-0002 §1). An emitted vector is never
-# touched again (it belongs to the chunk): `_emit!` starts a fresh one, size-hinted to `cap`, the
-# length of the last emitted chunk (so it does not regrow; a sparse `filter` keeps a small one).
+# a `Vector{Any}` narrowed when emitted (never `convert`, ADR-0002 §1). The chunk so far is the
+# first `n` slots of the buffer `v`, where `n` lives in the accumulator `_SinkAcc` that the
+# pipeline folds through, so the in-chunk loop keeps it in a register (a count or a `push!`
+# through the mutable sink is re-read from memory per element: about 2.5x the cost). An emitted
+# vector is never touched again (it belongs to the chunk): `_emit!` starts a fresh buffer of the
+# length of the chunk it emitted (so a fused chunk does not regrow); a chunk that fills less
+# than a quarter of its buffer is copied out instead and the buffer kept (a sparse `filter`
+# hands out no oversized vectors).
 
 mutable struct _Sink{T}
     v::Vector{T}
     wide::Union{Nothing, Vector{Any}}
-    cap::Int
 end
-_Sink{T}() where {T} = _Sink{T}(T[], nothing, 0)
-_Sink{T}(cap::Int) where {T} = _Sink{T}(sizehint!(T[], cap), nothing, cap)
+_Sink{T}(cap::Int = 0) where {T} = _Sink{T}(Vector{T}(undef, cap), nothing)
 
-@inline function _sinkpush(s::_Sink{T}, x) where {T}
-    if s.wide === nothing && x isa T
-        push!(s.v, x)
-    else
-        _widenpush!(s, x)
-    end
-    return s
+# (One pointer and an `Int`: an accumulator with two pointers is not kept in registers by the
+# in-chunk loop, measured about 8x slower through `filter`.)
+struct _SinkAcc{T}
+    s::_Sink{T}
+    n::Int                  # filled slots of `s.v`; -1 once `s.wide` holds the chunk
 end
-@noinline function _widenpush!(s::_Sink, x)
+_SinkAcc(s::_Sink{T}) where {T} = _SinkAcc{T}(s, 0)
+
+@inline function _sinkpush(a::_SinkAcc{T}, x) where {T}
+    s = a.s
+    if a.n >= 0 && x isa T
+        n = a.n + 1
+        v = s.v
+        n > length(v) && _sinkgrow!(v, n)
+        @inbounds v[n] = x
+        return _SinkAcc{T}(s, n)
+    end
+    _widenpush!(s, max(a.n, 0), x)
+    return _SinkAcc{T}(s, -1)
+end
+@noinline function _sinkgrow!(v::Vector, n::Int)
+    resize!(v, max(2 * length(v), n, 16))      # in place: `v` stays `s.v`
+    return nothing
+end
+@noinline function _widenpush!(s::_Sink, n::Int, x)
     if s.wide === nothing
-        s.wide = Vector{Any}(s.v)
-        empty!(s.v)
+        w = Vector{Any}(undef, n)
+        copyto!(w, 1, s.v, 1, n)
+        s.wide = w
     end
     push!(something(s.wide), x)
     return nothing
 end
-_sinkempty(s::_Sink) = isempty(s.v) && (s.wide === nothing || isempty(something(s.wide)))
-function _emit!(s::_Sink{T}) where {T}
-    if s.wide === nothing
+_sinkempty(a::_SinkAcc) = a.n == 0 || (a.n < 0 && isempty(something(a.s.wide)))
+# Hand out the chunk; the accumulator continues as `_SinkAcc(a.s)` (empty).
+function _emit!(a::_SinkAcc{T}) where {T}
+    s = a.s
+    if a.n >= 0
         v = s.v
-        s.cap = max(length(v), 1)
-        s.v = sizehint!(T[], s.cap)
+        n = a.n
+        4 * n < length(v) && return v[1:n]          # sparse: copy out, keep the buffer
+        resize!(v, n)
+        s.v = Vector{T}(undef, max(n, 1))
         return v
     end
     w = something(s.wide)
     s.wide = nothing
-    s.cap = max(length(w), 1)
     return map(identity, w)          # `s.v` was never handed out: it is reused
 end
 # The chunk of a sink used for exactly one chunk (no replacement buffer).
-_take!(s::_Sink) = s.wide === nothing ? s.v : map(identity, something(s.wide))
+_take!(a::_SinkAcc) = a.n >= 0 ? resize!(a.s.v, a.n) : map(identity, something(a.s.wide))
 
 # ---- Simple sources -----------------------------------------------------------------------------
 
@@ -316,16 +339,43 @@ end
 
 The effect that runs `s` and succeeds with `foldl(op, elements; init)`.
 """
-function runfold(op, init, s::Stream)
+function runfold(op, init, s::Stream{T}) where {T}
     return _runeffect(
         Any, ctx -> begin
-            acc = Ref{Any}(init)
-            out = _drive(ch -> (acc[] = _foldchunk(op, acc[], ch)), s.src, ctx)
-            out[1] ? (true, acc[]) : out
+            f = Ref{Any}(_newfold(op, init, T))
+            out = _drive(ch -> _foldstep!(f, ch), s.src, ctx)
+            out[1] ? (true, f[].acc) : out
         end
     )
 end
-_foldchunk(op, acc, chunk) = foldl(op, chunk; init = acc)
+
+# The fold's state. `A` is `typeof(init)` when inference says `op(::A, ::T)` returns exactly that
+# concrete type, else `Any`: then a chunk's fold result is stored unboxed (spec D5).
+mutable struct _Fold{F, A}
+    op::F
+    acc::A
+end
+function _newfold(op::F, init::A, ::Type{T}) where {F, A, T}
+    typed = isconcretetype(A) && Base.promote_op(op, A, T) === A
+    return typed ? _Fold{F, A}(op, init) : _Fold{F, Any}(op, init)
+end
+struct _Widened
+    acc::Any
+end
+# One chunk folded into `f.acc` (the one dynamic call per chunk: on the heap `_Fold` and the boxed
+# chunk). A result that is not an `A` (inference was too narrow) is handed back, never converted.
+function _foldinto!(f::_Fold{F, A}, chunk) where {F, A}
+    a = foldl(f.op, chunk; init = f.acc)
+    a isa A || return _Widened(a)
+    f.acc = a
+    return nothing
+end
+function _foldstep!(f::Base.RefValue{Any}, chunk)
+    w = _foldinto!(f[], chunk)
+    w === nothing && return nothing
+    f[] = _Fold{Any, Any}(f[].op, (w::_Widened).acc)
+    return nothing
+end
 
 """
     runforeach(f, s::Stream) -> Effect{Any,Nothing}
