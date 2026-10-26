@@ -1,8 +1,8 @@
 # ADR-0009: Performance budgets are enforced by tests, with every loss published
 
-- **Status:** Proposed (2026-10-26, phase 5)
+- **Status:** Accepted (2026-10-26, user, at the phase-5 merge)
 - **Date:** 2026-10-26
-- **Deciders:** the lead (dep-free workload, accepted losses); the user at the phase-5 ★
+- **Deciders:** the lead (the dep-free workload; the accepted losses); the user, who accepted this ADR at the phase-5 merge on 2026-10-26
 - **Scope:** ChuiTypes.jl
 
 ## Context

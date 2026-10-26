@@ -28,7 +28,7 @@ every checkpoint. Keep it short; history lives in git and in ADRs.
     - `benchmark/ttfx.jl`;
     - `test/test_precompile.jl`.
     - TTFX workload total: 1.77 → 0.28 s on 1.13.2, 1.30 → 0.18 s on 1.10.12 (loaded machine).
-  - **ADR-0009** (Proposed) records the performance budgets, enforced by tests. It cites
+  - **ADR-0009** (Accepted by the user at the phase-5 merge, 2026-10-26) records the performance budgets, enforced by tests. It cites
     `test/test_perf.jl` and `test/test_precompile.jl`, and also records the losses, the JET
     triage and the follow-ups.
 - **Dependencies:** unchanged (`Compat`, `ScopedValues`). PrecompileTools was rejected
@@ -45,7 +45,7 @@ every checkpoint. Keep it short; history lives in git and in ADRs.
 
 | Lane | Branch | Status |
 |---|---|---|
-| `phase5` | `feat/phase5` | integration; reviewer FINAL APPROVE on `main...feat/phase5`; ready for the lead's merge. ADR-0009 stays Proposed until the user accepts it at the merge |
+| `phase5` | `feat/phase5` | integration; reviewer FINAL APPROVE on `main...feat/phase5`; the user approved the merge and accepted ADR-0009 (2026-10-26); the lead merges |
 
 The lanes `p5-perf` and `p5-ttfx` are merged. Their worktrees were removed on 2026-10-26; the
 branches are kept. Their scratch is in the main checkout's `.lanes/archive/`.
@@ -103,7 +103,7 @@ branches are kept. Their scratch is in the main checkout's `.lanes/archive/`.
 
 ## Next action
 
-1. The lead merges `feat/phase5` into `main`, and the user accepts ADR-0009 at that merge.
+1. The lead merges `feat/phase5` into `main`. The user approved this, and accepted ADR-0009, on 2026-10-26.
 2. Then phase 6 (docs), or item 1 once ChuiCore 0.0.1 is registered.
 3. Before v0.1.0, run TTFX on a quiet machine:
    `julia scripts/evidence.jl p5-ttfx-integrated -- sh -c 'uptime; julia --project=. benchmark/ttfx.jl --reps 7 --compilecache 3 && julia +lts --project=. benchmark/ttfx.jl --reps 7 --compilecache 3; uptime'`.
