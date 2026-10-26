@@ -34,8 +34,12 @@ every checkpoint. Keep it short; history lives in git and in ADRs.
 - **Dependencies:** unchanged (`Compat`, `ScopedValues`). PrecompileTools was rejected
   (ADR-0005 §2; ADR-0009).
 - **Evidence:** `.lanes/evidence/` (gitignored) of each worktree. The integration files are
-  `tests-9bbf10c.txt` (17270 pass, 1.13) and `tests-lts-9bbf10c.txt` (17255 pass, 1.10). The lane
-  files are copied into the phase5 worktree.
+  `tests-ff93788.txt` (17283 pass, 1.13) and `tests-lts-ff93788.txt` (17268 pass, 1.10), both
+  clean, on the tree of `0c3d22d`. The earlier `tests-lts-9bbf10c.txt` was dirty only because
+  the ADR-0009 draft was uncommitted. Every lane evidence file is copied into the phase5
+  worktree's `.lanes/evidence/`, so the p5 worktrees can be removed.
+- **Final-review blocker B1, fixed:** `fromiter` over a range longer than `typemax(Int)` was
+  empty or threw. Such a range now falls back to iteration (`ff93788`, merged at `0c3d22d`).
 
 ## Open lanes
 
@@ -85,7 +89,7 @@ every checkpoint. Keep it short; history lives in git and in ADRs.
   pass on the integrated head under load: 0.33 s on 1.13 and 0.19 s on 1.10, against ceilings of
   1.0 and 0.75 s.
 - No time measurement on a quiet machine: all phase-5 time figures are labelled with their load
-  average (1-min 3.2–12).
+  average (1-min 2.8–12).
 - Julia 1.14 (alpha), 1.12, and `pre`: no local binaries. The `test_perf.jl` rows cover 1.13 and
   1.10; any other version gets a loose ceiling.
 - `ci.jl contracts`: it skips, because there is no ChuiCore URL yet.

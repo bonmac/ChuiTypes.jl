@@ -112,8 +112,12 @@ Time rows, 1.13.2, ns per element or bind, median / min: before `p5-perf-before-
 
 ## Verification
 
-At 9bbf10c, `ci.jl test -- all` passes the budget item (same mode-A counts) and the `:slow` TTFX
-ceiling on both versions (`tests-9bbf10c.txt`, `tests-lts-9bbf10c.txt`; load 8.4–8.6). PENDING: integrated TTFX medians (quiet-window re-measure).
+At ff93788, which is the tree of the integration head after the final-review fix for huge
+ranges, `ci.jl test -- all` passes on both versions, with clean trees: 17283 pass on 1.13.2
+(`tests-ff93788.txt`) and 17268 pass on 1.10.12 (`tests-lts-ff93788.txt`). Those runs include
+the budget item, with the same mode-A counts, and the `:slow` TTFX ceiling. The ceiling item's
+minimum of 3 was 0.2949 s on 1.13.2 and 0.1821 s on 1.10.12, on a loaded machine (no load
+figure was recorded). PENDING: integrated TTFX medians (quiet-window re-measure).
 
 ## Revisit when
 
