@@ -124,6 +124,26 @@ end
     @test eltype(run(runchunks(fromiter(Any[1, 2])))[1]) === Any
 end
 
+@testitem "fromiter: ranges longer than typemax(Int), and BigInt ranges (integration review B1)" tags = [:unit] begin
+    using ChuiTypes
+    @test run(runcollect(Iterators.take(fromiter(0:typemax(Int)), 3))) == [0, 1, 2]
+    @test run(runcollect(Iterators.take(fromiter(typemin(Int):typemax(Int)), 2))) == [typemin(Int), typemin(Int) + 1]
+    r = run(runcollect(fromiter(big(1):big(3))))
+    @test r == BigInt[1, 2, 3] && eltype(r) === BigInt
+    @test run(runcollect(Iterators.take(fromiter(big(1):(big(10)^30)), 2))) == BigInt[1, 2]
+    @test run(runcollect(Iterators.take(fromiter(typemin(Int):2:typemax(Int)), 2))) == [typemin(Int), typemin(Int) + 2]
+    # indexed ranges that end at typemax(Int): the cursor must not overflow
+    hi = (typemax(Int) - 4):typemax(Int)
+    @test fromiter(hi).src isa ChuiTypes._IdxSrc
+    for k in (1, 2, 5, 7)
+        @test run(runcollect(fromiter(hi; chunksize = k))) == collect(hi)
+    end
+    @test run(runcollect(Iterators.take(fromiter(Base.OneTo(typemax(Int))), 3))) == [1, 2, 3]
+    # an empty or ordinary range still takes the indexed path
+    @test fromiter(1:0).src isa ChuiTypes._IdxSrc && fromiter(1:5).src isa ChuiTypes._IdxSrc
+    @test run(runcollect(fromiter(1:0))) == Int[]
+end
+
 @testitem "fromiter: the generic source infers its state type, else Any" tags = [:unit] setup = [FastPath] begin
     using ChuiTypes
     ctx = ChuiTypes._Ctx(ChuiTypes._CancelState(), nothing, 0, nothing, nothing)

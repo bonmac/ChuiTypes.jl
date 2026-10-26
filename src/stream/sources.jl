@@ -93,7 +93,13 @@ function _pull!(p::_IdxP, ::_Ctx)
     n < p.chunksize && (p.done = true)
     n <= 0 && return nothing
     v = _copychunk(a, i, n)
-    p.i = i + n
+    # `i + n` would overflow once a range ending at typemax(Int) is consumed (a Vector cannot
+    # be that long): end there instead.
+    if i + (n - 1) == typemax(Int)
+        p.done = true
+    else
+        p.i = i + n
+    end
     return v
 end
 _close!(::_IdxP, ::_Ctx) = nothing
@@ -122,7 +128,18 @@ function _copychunk(a::AbstractVector{T}, i::Int, n::Int) where {T}
 end
 
 _source(itr, n::Int) = _IterSrc(itr, n)
-_source(a::Union{Vector, AbstractRange}, n::Int) = _IdxSrc(a, n)
+_source(a::Vector, n::Int) = _IdxSrc(a, n)
+# A range only when its length is an `Int` that agrees with `isempty`: `length` wraps for
+# `0:typemax(Int)` and `typemin(Int):typemax(Int)`, and is a `BigInt` for a `BigInt` range
+# (integration review B1). Those keep the generic iteration path.
+function _source(a::AbstractRange, n::Int)
+    L = try
+        length(a)
+    catch
+        nothing
+    end
+    return L isa Int && (L > 0) == !isempty(a) ? _IdxSrc(a, n) : _IterSrc(a, n)
+end
 _source(a::SubArray{<:Any, 1, <:Vector}, n::Int) = IndexStyle(a) === IndexLinear() ? _IdxSrc(a, n) : _IterSrc(a, n)
 
 """
