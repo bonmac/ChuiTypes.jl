@@ -12,6 +12,7 @@
   `risk.toml`. A code lane without the test-writer and implementer needs a lead
   `TDD-Mode: skip — <reason>` commit.
 - `test/runtests.jl` selects single items with `item=<name>` and records the matched names in
-  `TDD_MATCHED`; the tag selection is unchanged.
+  `TDD_MATCHED`. Tag selection is unchanged, except that on non-stable Julia `:doctest` and
+  `:snapshot` items are no longer selectable by tag (`-- doctest`, `-- all`).
 - `/change-review`, the `lane-lifecycle` skill, the reviewer and tester bodies, `checks.toml` and
   `docs/CHECK_COVERAGE.md` describe test-first lanes and the new blind spots.
