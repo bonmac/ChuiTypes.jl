@@ -1,0 +1,1 @@
+- `scan(op, init, s)` widens its accumulator like `Base.accumulate`: `collect(scan(+, 0, fromiter([1, 2.5, 3])))` now gives `[1.0, 3.5, 6.5]` instead of throwing on `convert` (ADR-0009 follow-up 4). Results do not depend on chunking, and an `Int`-only scan keeps its `Int` accumulator.
