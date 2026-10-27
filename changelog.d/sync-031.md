@@ -1,5 +1,7 @@
 - Synced the ecosystem factory template 0.3.0 -> 0.3.1 (see `.factory-version`; coordinator
-  factory CHANGELOG 0.3.1, ADR-0015). A patch: managed files only, no seeded hand edit.
+  factory CHANGELOG 0.3.1, ADR-0015; it fixes 0.3.0 under the coordinator spec
+  `docs/superpowers/specs/2026-10-26-factory-test-writer-design.md`). A patch: managed files
+  only, no seeded hand edit.
 - `julia scripts/ci.jl format` passes again. The job picks its own files (`CI.format_files`:
   git-listed `.jl` files minus `scripts/test/fixtures/`) and hands Runic `--check --diff <files>`,
   so the deliberately broken tdd fixture no longer aborts it; the template scripts are Runic-clean.
