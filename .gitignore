@@ -6,6 +6,7 @@
 /test/jet/Manifest*.toml
 /test/contracts/Manifest*.toml
 /benchmark/Manifest*.toml
+/scripts/test/fixtures/tdd/scratchpkg/Manifest*.toml
 # lanes and agent scratch
 /.worktrees/
 /.lanes/
