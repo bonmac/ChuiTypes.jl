@@ -215,10 +215,14 @@ function next(rf::R{Take}, w::_State, x)
 end
 complete(rf::R{Take}, w::_State) = complete(rf.inner, w.acc)
 
-start(rf::R{<:Scan}, acc) = _State(rf.xf.init, start(rf.inner, acc))
-function next(rf::R{<:Scan}, w::_State, x)
+# The state slot has the type parameter `T` of `Scan{F, T}` (by default `typeof(init)`); a wider
+# `T` lets the accumulator widen like `Base.accumulate`, without changing the slot's type.
+_State{S}(s, a) where {S} = _State{S, typeof(a)}(s, a)
+start(rf::R{<:Scan{F, T}}, acc) where {F, T} = _State{T}(rf.xf.init, start(rf.inner, acc))
+function next(rf::R{<:Scan}, w::_State{S}, x) where {S}
     s = rf.xf.op(w.state, x)
-    return _rewrap(s, next(rf.inner, w.acc, s))
+    a = next(rf.inner, w.acc, s)
+    return a isa Reduced ? Reduced(_State{S}(s, a.value)) : _State{S}(s, a)
 end
 complete(rf::R{<:Scan}, w::_State) = complete(rf.inner, w.acc)
 

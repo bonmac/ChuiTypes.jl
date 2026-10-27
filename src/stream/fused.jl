@@ -40,7 +40,7 @@ end
 _bottom(a::_SinkAcc) = a
 _bottom(a::U._State) = _bottom(a.acc)
 _emptied(a::_SinkAcc) = _SinkAcc(a.s)
-_emptied(a::U._State) = U._State(a.state, _emptied(a.acc))
+_emptied(a::U._State{S}) where {S} = U._State{S}(a.state, _emptied(a.acc))
 
 # The in-chunk loop (the function barrier: specialised on `rf`, `acc` and the chunk type).
 function _runchunk(rf::RF, acc::A, chunk) where {RF, A}
@@ -123,12 +123,14 @@ Base.filter(p, s::Stream{T}) where {T} = _fuse(T, s, U.Filter(p))
     scan(op, init, s::Stream) -> Stream
 
 Rx `scan`: the running accumulations `op(acc, x)`, starting from `init` (which is not emitted).
-The accumulator is carried across chunks (fused).
+The accumulator is carried across chunks (fused), and widens from `typeof(init)` to the type of
+`op(acc, x)` like `Base.accumulate`.
 """
 function scan(op, init, s::Stream{T}) where {T}
     R1 = _ret(op, typeof(init), T)
     R = typejoin(R1, _ret(op, R1, T))
-    return _fuse(R, s, U.Scan(op, init))
+    S = Union{typeof(init), R}
+    return _fuse(R, s, U.Scan{typeof(op), S}(op, init))
 end
 
 """
